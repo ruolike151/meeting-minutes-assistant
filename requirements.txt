@@ -1,0 +1,22 @@
+# 会议纪要助手 · M1 直接依赖（精确版本锁定，见《技术方案》15 节）
+#
+# 安装：
+#   meeting_assistant\Scripts\python.exe -m pip install -r requirements.txt
+#
+# 传递依赖的完整快照在 requirements.lock.txt（pip freeze 导出），用于逐位复现。
+
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+pydantic==2.13.5
+jieba==0.42.1              # 中文分词：FTS5 索引列需要预分词
+python-multipart==0.0.32   # POST /api/audio 的文件上传
+
+# 测试
+pytest==9.1.1
+httpx==0.28.1              # FastAPI TestClient 的传输层
+
+# 后续里程碑按需引入，M1 不背不用的依赖：
+#   langgraph / langchain-core   M3 编排状态图与工具契约
+#   openai                       M3 LLM 适配（OpenAI 兼容协议）
+#   numpy                        M3 向量召回（暴力余弦）
+#   langfuse                     M5 调用链与成本观测
