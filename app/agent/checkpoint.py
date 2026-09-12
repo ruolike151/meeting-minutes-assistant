@@ -32,9 +32,11 @@ from app.config import Settings
 # 每个请求新建连接会在测试里迅速堆积文件句柄。
 _SAVERS: dict[str, Any] = {}
 
-# 会出现在 minutes 图状态里的领域模型。显式登记（而不是允许一切）：
+# 会出现在图状态里的模型。显式登记（而不是允许一切）：
 # LangGraph 对未登记类型会先告警、后续版本直接拒绝反序列化，
 # 在这里列清楚既消掉告警，也把"检查点里能放什么"变成一条可审查的清单。
+# 教训：chat 图的状态里有 Answer / Message / Draft / ChatResult，
+# 只登记 minutes 图那几个模型时它们会被静默拦掉（恢复时值变 None）。
 _DOMAIN_MODELS = (
     "Meeting",
     "Participant",
@@ -45,6 +47,18 @@ _DOMAIN_MODELS = (
     "ActionItem",
     "OpenQuestion",
     "Risk",
+    # chat 图用到的
+    "Answer",
+    "AnswerBlock",
+    "AnswerItem",
+    "Citation",
+    "Message",
+    "TraceStep",
+)
+
+_AGENT_MODELS = (
+    ("app.agent.answers", "Draft"),
+    ("app.agent.persist", "ChatResult"),
 )
 
 
@@ -85,9 +99,8 @@ def _sqlite_saver(path: Path) -> Any:
 
     conn = sqlite3.connect(key, check_same_thread=False)
     serde = JsonPlusSerializer(
-        allowed_msgpack_modules=[
-            ("app.domain.models", name) for name in _DOMAIN_MODELS
-        ]
+        allowed_msgpack_modules=[("app.domain.models", name) for name in _DOMAIN_MODELS]
+        + list(_AGENT_MODELS)
     )
     saver = SqliteSaver(conn, serde=serde)
     saver.setup()

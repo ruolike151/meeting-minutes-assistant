@@ -129,10 +129,10 @@ M1 的规则路由与关键词检索是**可替换的临时实现**，
 
 | 交付项 | 落地位置 | 说明 |
 | --- | --- | --- |
-| 数据集契约 | `app/eval/dataset.py`、`samples/annotations/m5/` | 56 检索 / 31 路由 / 22 问答 / 3 场纪要金标；金标存在性、拒答互斥、会议覆盖三类校验 |
+| 数据集契约 | `app/eval/dataset.py`、`app/eval/fixtures.py`、`samples/annotations/m5/` | 70 检索 / 34 路由 / 29 问答 / 5 场纪要金标；真实语料由 `scripts/build_eval_corpus.py` 从转写稿 + 人工金标合成后灌入评测库 |
 | 指标库 | `app/eval/metrics.py` | P/R/F1、Recall@k、MRR、准确率、混淆矩阵、拒答两方向、分位数、kappa、成本汇总 |
 | 运行器与报告 | `app/eval/runner.py`、`app/eval/report.py` | 一次运行产出 `raw.json` / `metrics.json` / `report.md`；离线基线无网络无 Key |
-| 重排消融 | `app/retrieval/rerank.py` | cross-encoder 可插拔、不可用回落、原因可见；实测 MRR 0.697 → 0.792（+13.6%） |
+| 重排消融 | `app/retrieval/rerank.py` | cross-encoder 可插拔、不可用回落、原因可见；实测 MRR 0.579 → 0.661（+14.1%） |
 | 可观测 | `app/observability/langfuse.py`、`docker-compose.langfuse.yml` | 未启用时**不 import** langfuse；上报失败只记日志；口径见 [`docs/M5-可观测看板.md`](docs/M5-可观测看板.md) |
 | 一键复现 | `scripts/run_eval_all.py` | `--offline` / `--cache-first` / `--live` / `--dry-run` / `--rerank` |
 
@@ -380,4 +380,4 @@ M1 的口径：命中片段覆盖率 < 0.34 即拒答。
 | M2 感知 ✅ | 接入真实转写与声纹，`offline.py` 降级为测试后端；实测窗口级准确率 93.75%、宏平均召回 92.86%、RTF 0.09（GPU）/ 0.48（CPU） | `app/perception/`、`scripts/` |
 | M3 编排与检索 ✅ | LangGraph 状态图（路由/澄清/拒答/重试）、向量召回 + RRF + 双闸拒答、LLM 合成与纪要生成；实测 Recall@8 1.000 / MRR 0.881 / 拒答正确率 1.000 → 计划见 [`docs/M3-编排与检索阶段实施计划.md`](docs/M3-编排与检索阶段实施计划.md)，数字见 [`docs/M3-编排与检索评测报告.md`](docs/M3-编排与检索评测报告.md) | `app/agent/`、`app/retrieval/` |
 | M4 协同 ✅ | checkpointer + interrupt 支撑待确认区挂起恢复、证据回跳、override 完整交互 → 计划见 [`docs/M4-协同阶段实施计划.md`](docs/M4-协同阶段实施计划.md)，结果见 [`docs/M4-协同阶段验收报告.md`](docs/M4-协同阶段验收报告.md) | `app/agent/`、`web/` |
-| M5 评测 ✅ | 标注集（56 检索 / 31 路由 / 22 问答 / 3 场纪要金标）、12 项指标、重排消融（MRR +13.6%）、Langfuse 适配与一键复现 → 计划见 [`docs/M5-评测阶段实施计划.md`](docs/M5-评测阶段实施计划.md)，数字与缺口见 [`docs/M5-评测报告.md`](docs/M5-评测报告.md) | `app/eval/`、`scripts/`、`docs/` |
+| M5 评测 ✅ | 语料 5 场 / 63 片段（3 场样例 + 2 场真实录音）、标注集（70 检索 / 34 路由 / 29 问答 / 5 场纪要金标）、12 项指标、重排消融（MRR +14.1%）、Langfuse 自托管验证、一键复现 → 计划见 [`docs/M5-评测阶段实施计划.md`](docs/M5-评测阶段实施计划.md)，数字与缺口见 [`docs/M5-评测报告.md`](docs/M5-评测报告.md) | `app/eval/`、`scripts/`、`docs/` |

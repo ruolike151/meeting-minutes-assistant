@@ -9,6 +9,13 @@ from app.observability.langfuse import (
     NullTraceSink,
     TraceSink,
     build_sink,
+    to_trace_id,
 )
 
-__all__ = ["LangfuseTraceSink", "NullTraceSink", "TraceSink", "build_sink"]
+__all__ = [
+    "LangfuseTraceSink",
+    "NullTraceSink",
+    "TraceSink",
+    "build_sink",
+    "to_trace_id",
+]

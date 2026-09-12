@@ -1,5 +1,5 @@
 {
-  "version": "m5-2026-09-12.1",
+  "version": "m5-2026-09-12.2",
   "updated_at": "2026-09-12",
   "source": "sample",
   "notes": [
@@ -69,6 +69,28 @@
     {"query": "明年春节是几月几号？", "must_refuse": true,
      "gold_points": [], "allowed_segments": []},
     {"query": "怎么用 Python 读取 Excel 文件？", "must_refuse": true,
-     "gold_points": [], "allowed_segments": []}
+     "gold_points": [], "allowed_segments": []},
+    {"query": "官网改版项目里设计和开发的交付节奏是怎样的？", "meeting_id": "m_real_1",
+     "gold_points": ["设计今天中午前交付全套设计稿", "开发拿到设计稿后立即开始迭代开发"],
+     "allowed_segments": ["m_real_1:s3", "m_real_1:s4", "m_real_1:s5"]},
+    {"query": "用户反馈主要集中在哪些问题上？", "meeting_id": "m_real_1",
+     "gold_points": ["首页入口太深", "活动弹窗不醒目"],
+     "allowed_segments": ["m_real_1:s2", "m_real_1:s5"]},
+    {"query": "新品推广的点击转化率为什么偏低？", "meeting_id": "m_real_2",
+     "gold_points": ["缺少配套的宣传长图和海报", "产品核心优势传达不清晰"],
+     "allowed_segments": ["m_real_2:s3", "m_real_2:s4"]},
+    {"query": "设计物料目前卡在哪里？", "meeting_id": "m_real_2",
+     "gold_points": ["优惠细则微调导致海报返工", "缺少最终版产品核心卖点文案"],
+     "allowed_segments": ["m_real_2:s7", "m_real_2:s8"]},
+    {"query": "门店落地执行存在什么风险？", "meeting_id": "m_real_2",
+     "gold_points": ["门店宣导不统一", "预热节奏偏慢"],
+     "allowed_segments": ["m_real_2:s11", "m_real_2:s12"]},
+    {"query": "接下来三天三个岗位分别负责什么？", "meeting_id": "m_real_2",
+     "gold_points": ["市场更新宣传文案并跟进转化数据", "设计完成物料并在明天上午交付",
+                     "执行完成门店政策同步与链接检查"],
+     "allowed_segments": ["m_real_2:s16", "m_real_2:s17", "m_real_2:s18"]},
+    {"query": "明天的安排是什么？", "meeting_id": "m_real_2",
+     "gold_points": ["明天上午设计交付全部物料", "明天下午再做一次进度抽查"],
+     "allowed_segments": ["m_real_2:s17", "m_real_2:s21"]}
   ]
 }

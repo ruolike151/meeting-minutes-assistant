@@ -4,6 +4,10 @@
 #   # 首次打开 http://localhost:3000 注册并创建项目，拿到公钥 / 私钥
 #   # 写进 .env：MA_LANGFUSE_ENABLED=true / MA_LANGFUSE_PUBLIC_KEY / MA_LANGFUSE_SECRET_KEY
 #
+# 这里已经用 LANGFUSE_INIT_* 做了 **headless 初始化**：容器起来就自带
+# 组织 / 项目 / 用户 / API Key，不需要手工注册。默认账号见文件末尾注释，
+# 只用于本机演示——生产部署请改成自己的密钥并放进 .env，不要提交。
+#
 # 说明：
 # * 数据全部留在本机（Postgres + ClickHouse 都在这个 compose 里），符合"转写文本不外发"的取向；
 # * 起不来也不影响主流程：MA_LANGFUSE_ENABLED=false 时上报器是空实现，
@@ -19,12 +23,39 @@ services:
       CLICKHOUSE_URL: http://langfuse-clickhouse:8123
       CLICKHOUSE_USER: default
       CLICKHOUSE_PASSWORD: clickhouse
+      # v3 需要单独的迁移连接串（走 9000 原生协议）并显式关闭集群模式
+      CLICKHOUSE_MIGRATION_URL: clickhouse://default:clickhouse@langfuse-clickhouse:9000
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      # 队列与缓存
+      REDIS_CONNECTION_STRING: redis://:redis@langfuse-redis:6379
+      # v3 把事件放到对象存储；本机演示用 MinIO（官方 compose 同款做法）
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
       NEXTAUTH_URL: http://localhost:3000
       NEXTAUTH_SECRET: ma-local-dev-secret
       SALT: ma-local-dev-salt
+      # v3 必需：用于加密集成凭据（本机演示值，生产请换成自己的 32 字节随机 hex）
+      ENCRYPTION_KEY: 0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0
+      # headless 初始化：容器首次启动时创建组织 / 项目 / 用户 / API Key
+      LANGFUSE_INIT_ORG_ID: ma-local-org
+      LANGFUSE_INIT_ORG_NAME: MeetingAssistant
+      LANGFUSE_INIT_PROJECT_ID: ma-local-project
+      LANGFUSE_INIT_PROJECT_NAME: meeting-assistant
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-ma-local
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-ma-local
+      LANGFUSE_INIT_USER_EMAIL: demo@example.com
+      LANGFUSE_INIT_USER_NAME: demo
+      LANGFUSE_INIT_USER_PASSWORD: ma-local-demo-password
     depends_on:
       - langfuse-db
       - langfuse-clickhouse
+      - langfuse-redis
+      - langfuse-minio
 
   langfuse-db:
     image: postgres:16-alpine
@@ -35,6 +66,33 @@ services:
     volumes:
       - langfuse_pg:/var/lib/postgresql/data
 
+  # v3 的写入路径是「web 入队 → worker 消费 → ClickHouse/S3」，
+  # 少了 worker，事件会一直躺在队列里，界面上什么都看不到。
+  langfuse-worker:
+    image: langfuse/langfuse-worker:3
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@langfuse-db:5432/langfuse
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_MIGRATION_URL: clickhouse://default:clickhouse@langfuse-clickhouse:9000
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      REDIS_CONNECTION_STRING: redis://:redis@langfuse-redis:6379
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      ENCRYPTION_KEY: 0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0
+      SALT: ma-local-dev-salt
+    depends_on:
+      - langfuse-db
+      - langfuse-clickhouse
+      - langfuse-redis
+      - langfuse-minio
+
   langfuse-clickhouse:
     image: clickhouse/clickhouse-server:24-alpine
     environment:
@@ -43,6 +101,27 @@ services:
     volumes:
       - langfuse_clickhouse:/var/lib/clickhouse
 
+  langfuse-redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--requirepass", "redis"]
+    volumes:
+      - langfuse_redis:/data
+
+  langfuse-minio:
+    image: minio/minio
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server /data --console-address ":9001"'
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: miniosecret
+    volumes:
+      - langfuse_minio:/data
+
 volumes:
   langfuse_pg:
   langfuse_clickhouse:
+  langfuse_redis:
+  langfuse_minio:
+
+# 本机演示账号：demo@example.com / ma-local-demo-password
+# API Key：pk-lf-ma-local / sk-lf-ma-local（只用于 localhost，请勿用于生产）

@@ -11,6 +11,7 @@ from app.observability.langfuse import (
     LangfuseTraceSink,
     NullTraceSink,
     build_sink,
+    to_trace_id,
 )
 from app.store.traces_repo import TraceRepo
 
@@ -63,7 +64,8 @@ def test_sink_records_usage_and_nodes() -> None:
     assert sink.sent == 1
     call = client.calls[0]
     assert call["name"] == "chat"
-    assert call["id"] == "c_1"
+    # 会话 ID 会被映射成 Langfuse 认的 32 位 hex（同会话聚合成一条 trace）
+    assert call["id"] == to_trace_id("c_1")
     assert call["metadata"]["latency_ms"] == 42
     assert call["metadata"]["nodes"] == ["retrieve", "synthesize"]
     assert call["metadata"]["meeting_id"] == "m_20260911"
@@ -75,6 +77,33 @@ def test_sink_swallows_client_errors() -> None:
     sink.record(name="chat", thread_id="c_1", nodes=[], usage={}, cost=0.0)
     assert sink.sent == 0
     assert "上报失败" in sink.reason
+
+
+def test_trace_id_is_derived_from_conversation_id() -> None:
+    """会话 ID 要映射成 Langfuse 认的 32 位 hex，否则同会话每轮各成一条 trace。"""
+    first = to_trace_id("c_abc123")
+    assert first is not None and len(first) == 32
+    assert first == to_trace_id("c_abc123"), "同一会话必须映射到同一个 trace"
+    assert first != to_trace_id("c_abc124")
+    # 已经合法的 id 原样透传
+    valid = "0123456789abcdef0123456789abcdef"
+    assert to_trace_id(valid) == valid
+    assert to_trace_id(None) is None
+
+
+def test_null_sink_has_flush() -> None:
+    """空实现也要有 flush()：调用方不必区分"有没有启用"。"""
+    NullTraceSink().flush()
+
+
+def test_sink_flush_swallows_errors() -> None:
+    class Broken:
+        def flush(self) -> None:
+            raise RuntimeError("连接断了")
+
+    sink = LangfuseTraceSink("http://localhost:3000", "pk", "sk", client=Broken())
+    sink.flush()
+    assert "flush 失败" in sink.reason
 
 
 def test_same_usage_reaches_local_trace_and_sink(conn, settings: Settings) -> None:

@@ -1,10 +1,10 @@
 {
-  "version": "m5-2026-09-12.1",
+  "version": "m5-2026-09-12.2",
   "updated_at": "2026-09-12",
   "source": "sample",
   "notes": [
     "金标来自 app/store/seeds.py 的三场样例会议（32 条片段），逐条由人工核对片段正文。",
-    "真实会议录音（脱敏）由用户提供后按同一 schema 追加，并升级 version。",
+    "真实会议语料为 m_real_1 / m_real_2（samples/audio 的两场四人会议录音，见 real_meetings.json），由评测运行器灌入评测数据目录。",
     "空 gold_segments 表示域外问题，必须拒答；有 gold_segments 表示域内问题，必须作答。"
   ],
   "cases": [
@@ -49,6 +49,21 @@
     {"query": "王强在几场会上被提到", "gold_segments": ["m_20260911:s5", "m_20260909:s8", "m_20260904:s8"], "gold_meetings": ["m_20260911", "m_20260909", "m_20260904"], "note": "跨会议"},
     {"query": "有没有跨会议都出现的问题", "gold_segments": ["m_20260911:s10", "m_20260904:s2", "m_20260909:s9"], "gold_meetings": ["m_20260911", "m_20260904", "m_20260909"], "note": "跨会议"},
     {"query": "孙悦参与了哪些会议的哪些事", "gold_segments": ["m_20260911:s7", "m_20260909:s10"], "gold_meetings": ["m_20260911", "m_20260909"], "note": "跨会议"},
+
+    {"query": "官网改版项目短会的整体进度怎么样", "gold_segments": ["m_real_1:s1", "m_real_1:s5"], "note": "真实录音"},
+    {"query": "用户反馈集中在哪些问题上", "gold_segments": ["m_real_1:s2"], "note": "真实录音"},
+    {"query": "设计稿什么时候能交付给开发", "gold_segments": ["m_real_1:s3"], "note": "真实录音"},
+    {"query": "开发这边现在准备到什么程度了", "gold_segments": ["m_real_1:s4"], "note": "真实录音"},
+    {"query": "短会最后总结了哪几件事", "gold_segments": ["m_real_1:s5"], "note": "真实录音"},
+    {"query": "新品线上推广的曝光和转化情况如何", "gold_segments": ["m_real_2:s2"], "note": "真实录音"},
+    {"query": "点击转化率比预期低的原因是什么", "gold_segments": ["m_real_2:s3"], "note": "真实录音"},
+    {"query": "设计物料为什么需要返工", "gold_segments": ["m_real_2:s7"], "note": "真实录音"},
+    {"query": "六套物料目前的完成度如何", "gold_segments": ["m_real_2:s6", "m_real_2:s8"], "note": "真实录音"},
+    {"query": "门店落地执行存在什么隐患", "gold_segments": ["m_real_2:s11"], "note": "真实录音"},
+    {"query": "接下来三天各岗位分别负责什么", "gold_segments": ["m_real_2:s16", "m_real_2:s17", "m_real_2:s18"], "note": "真实录音"},
+    {"query": "明天下午还有什么安排", "gold_segments": ["m_real_2:s21"], "note": "真实录音"},
+    {"query": "两场会议里设计侧都提到了哪些事", "gold_segments": ["m_real_1:s3", "m_real_2:s5", "m_real_2:s7"], "gold_meetings": ["m_real_1", "m_real_2"], "note": "真实录音 · 跨会议"},
+    {"query": "两次会议最后都是怎么收尾的", "gold_segments": ["m_real_1:s5", "m_real_2:s21"], "gold_meetings": ["m_real_1", "m_real_2"], "note": "真实录音 · 跨会议"},
 
     {"query": "公司食堂今天中午吃什么？", "gold_segments": [], "note": "域外"},
     {"query": "明天北京天气怎么样", "gold_segments": [], "note": "域外"},

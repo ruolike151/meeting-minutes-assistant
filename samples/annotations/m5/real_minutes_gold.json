@@ -1,0 +1,86 @@
+{
+  "version": "m5-2026-09-12.2",
+  "updated_at": "2026-09-12",
+  "source": "real_meeting",
+  "notes": [
+    "真实会议语料的元数据与纪要金标（人工撰写），由 scripts/build_eval_corpus.py 与转写稿合成 real_meetings.json。",
+    "转写稿来源：实习项目《员工声纹识别 Demo》的两场四人会议录音（samples/audio/meeting.mp3 与 meeting2.mp3），带说话人标注，已随仓库分发。",
+    "日期为语料入库日：原始录音没有日期元数据，不臆造真实日期。",
+    "GROUP 合说片段映射为 speaker_id=null、置信度 0.5（领域模型不承载合说），检索与纪要评测照常使用其文本。"
+  ],
+  "cases": [
+    {
+      "meeting_id": "m_real_1",
+      "title": "官网改版项目短会（真实录音）",
+      "date": "2026-08-28",
+      "time": "10:00",
+      "duration": 85.2,
+      "audio_file": "meeting.mp3",
+      "annotation_file": "meeting.demo.json",
+      "participants": {
+        "A": {"id": "p_pm", "name": "项目经理", "role": "项目负责人"},
+        "B": {"id": "p_ops", "name": "运营专员", "role": "运营"},
+        "C": {"id": "p_design", "name": "UI设计师", "role": "设计"},
+        "D": {"id": "p_dev", "name": "前端开发", "role": "研发"}
+      },
+      "minutes": {
+        "decisions": [
+          {"content": "首页新版简化入口层级并放大活动展示区域，设计稿今天中午前交付全套稿件。",
+           "evidence": ["s3"]},
+          {"content": "开发拿到设计稿后立即开始迭代开发，整体按原定时间节点推进。",
+           "evidence": ["s5"]}
+        ],
+        "action_items": [
+          {"task": "交付首页新版全套设计稿", "owner": "C", "due": "2026-08-28",
+           "evidence": ["s3"]},
+          {"task": "拿到设计稿后开始首页迭代开发", "owner": "D", "due": null,
+           "evidence": ["s4"]},
+          {"task": "全程待命并随时同步用户疑问", "owner": "B", "due": null,
+           "evidence": ["s5"]}
+        ],
+        "risks": []
+      }
+    },
+    {
+      "meeting_id": "m_real_2",
+      "title": "新品推广活动复盘会（真实录音）",
+      "date": "2026-08-29",
+      "time": "15:00",
+      "duration": 358.0,
+      "audio_file": "meeting2.mp3",
+      "annotation_file": "meeting2.demo.json",
+      "participants": {
+        "A": {"id": "p_pm", "name": "项目负责人", "role": "项目负责人"},
+        "B": {"id": "p_ops", "name": "市场专员", "role": "市场"},
+        "C": {"id": "p_design", "name": "设计专员", "role": "设计"},
+        "D": {"id": "p_dev", "name": "执行专员", "role": "执行"}
+      },
+      "minutes": {
+        "decisions": [
+          {"content": "最终版活动文案与优惠规则由项目负责人今天内输出定稿，避免设计反复返工。",
+           "evidence": ["s13"]},
+          {"content": "设计物料明天上午 10 点前全部交付，交付后同步备份归档。",
+           "evidence": ["s17"]},
+          {"content": "门店活动政策今天内完成统一同步，确保讲解口径一致。",
+           "evidence": ["s18"]},
+          {"content": "明天下午再做一次简短进度抽查。",
+           "evidence": ["s21"]}
+        ],
+        "action_items": [
+          {"task": "输出最终定稿版活动文案和优惠规则", "owner": "A", "due": "2026-08-29",
+           "evidence": ["s13"]},
+          {"task": "更新全套对外宣传文案并跟进每日转化数据", "owner": "B", "due": "2026-08-29",
+           "evidence": ["s16"]},
+          {"task": "完成剩余物料制作与精修，明天上午 10 点前交付", "owner": "C",
+           "due": "2026-08-30", "evidence": ["s17"]},
+          {"task": "完成门店活动政策同步并检查报名通道", "owner": "D", "due": "2026-08-29",
+           "evidence": ["s18"]}
+        ],
+        "risks": [
+          "门店宣导不统一、预热节奏偏慢，落地执行可能出现口径不一致。",
+          "优惠细则微调导致两张海报返工，物料交付存在延迟风险。"
+        ]
+      }
+    }
+  ]
+}

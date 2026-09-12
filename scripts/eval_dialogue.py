@@ -25,6 +25,7 @@ if str(ROOT) not in sys.path:
 
 from app.config import Settings  # noqa: E402
 from app.eval.dataset import load_dataset  # noqa: E402
+from app.eval.fixtures import ingest_real_meetings  # noqa: E402
 from app.eval.runner import evaluate_routes  # noqa: E402
 from app.store.bootstrap import bootstrap  # noqa: E402
 
@@ -47,6 +48,7 @@ def main() -> int:
     conn = bootstrap(run_settings)
     try:
         dataset = load_dataset(settings.eval_dataset_dir)
+        ingest_real_meetings(conn, dataset, audio_target_dir=run_settings.audio_dir)
         metrics, details = evaluate_routes(conn, run_settings, dataset)
     finally:
         conn.close()

@@ -26,6 +26,7 @@ if str(ROOT) not in sys.path:
 
 from app.config import Settings  # noqa: E402
 from app.eval.dataset import load_dataset  # noqa: E402
+from app.eval.fixtures import ingest_real_meetings  # noqa: E402
 from app.eval.runner import evaluate_minutes  # noqa: E402
 from app.store.bootstrap import bootstrap  # noqa: E402
 
@@ -43,6 +44,9 @@ def main() -> int:
     conn = bootstrap(run_settings)
     try:
         dataset = load_dataset(settings.eval_dataset_dir)
+        # 与 run_eval_all 保持一致：真实会议语料先灌进评测数据目录，
+        # 否则纪要金标里的 m_real_* 在库里根本不存在（踩过一次）
+        ingest_real_meetings(conn, dataset, audio_target_dir=run_settings.audio_dir)
         metrics, details = evaluate_minutes(
             conn, run_settings, dataset, offline=not args.live
         )

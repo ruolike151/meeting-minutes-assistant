@@ -11,7 +11,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import re
 from typing import Protocol, Sequence
 
 from app.config import Settings
@@ -41,6 +43,9 @@ class NullTraceSink:
     reason = ""
 
     def record(self, **kwargs) -> None:  # noqa: D102 - 故意为空
+        return None
+
+    def flush(self) -> None:  # noqa: D102 - 故意为空
         return None
 
 
@@ -113,7 +118,7 @@ class LangfuseTraceSink:
 
         三条分支按"新 → 旧"尝试，都不匹配才抛错（由调用方降级）。
         """
-        trace_id = payload["trace_id"] or client.create_trace_id()
+        trace_id = to_trace_id(payload["trace_id"]) or client.create_trace_id()
         metadata = {**payload["metadata"], "cost": payload["cost"]}
         create = getattr(client, "create_trace", None)
         if callable(create):
@@ -146,6 +151,30 @@ class LangfuseTraceSink:
             return
         raise AttributeError("Langfuse 客户端没有可用的上报接口")
 
+    def flush(self) -> None:
+        """把缓冲区里的 span 立刻推出去（脚本 / 短进程收尾时用）。"""
+        client = self._client
+        flush = getattr(client, "flush", None)
+        if client is not None and callable(flush):
+            try:
+                flush()
+            except Exception as error:  # noqa: BLE001 - 上报是增强，不阻塞主流程
+                self.reason = "Langfuse flush 失败（%s: %s）" % (type(error).__name__, error)
+
+
+def to_trace_id(value: str | None) -> str | None:
+    """把会话 ID 映射成 Langfuse 认的 trace id（32 位小写 hex）。
+
+    Langfuse 只接受 32 位 hex；我们的 `conversation_id`（`c_xxx`）直接传会被忽略，
+    结果是**同一会话的每一轮各成一条 trace**。这里做一次确定性哈希：
+    同一个会话永远映射到同一个 trace（可复现），不同会话不会撞车。
+    """
+    if not value:
+        return None
+    if re.fullmatch(r"[0-9a-f]{32}", value):
+        return value
+    return hashlib.md5(value.encode("utf-8")).hexdigest()
+
 
 def build_sink(settings: Settings | None) -> TraceSink:
     """按配置返回上报器；未启用 / 缺 Key 时返回空实现（并把原因留在 `reason`）。"""
@@ -160,4 +189,4 @@ def build_sink(settings: Settings | None) -> TraceSink:
     )
 
 
-__all__ = ["LangfuseTraceSink", "NullTraceSink", "TraceSink", "build_sink"]
+__all__ = ["LangfuseTraceSink", "NullTraceSink", "TraceSink", "build_sink", "to_trace_id"]

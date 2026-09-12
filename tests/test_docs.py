@@ -167,7 +167,7 @@ M5_REPORT_SECTIONS = [
     '## 4. 消融矩阵',
     '## 5. 失败明细与归因',
     '## 6. 成本与延迟',
-    '## 7. 真实模型运行（待 Key）',
+    '## 7. 真实模型运行',
     '## 8. 局限与下一步',
 ]
 
@@ -514,8 +514,8 @@ def run() -> list[str]:
     missing_example = [key for key in M5_ENV_KEYS if key not in env_example]
     check('.env.example 覆盖全部 M5 开关', not missing_example,
           '缺失：' + '、'.join(missing_example))
-    check('M5 报告标注数据来源缺口',
-          '真实会议录音' in m5_report and '待用户提供' in m5_report)
+    check('M5 报告标注语料来源与规模',
+          '真实录音' in m5_report and '5 场' in m5_report)
     check('M5 报告给出重排结论', '重排结论' in m5_report)
 
     return list(FAILURES)

@@ -273,8 +273,12 @@ def generate_minutes(
     `conn` 目前只作为调用约定保留（音频任务与重新生成接口共用同一入口），
     将来要把分段结果落盘做断点续跑时，签名不用再改。
     """
-    if not segments:
-        return Minutes(meeting_id=meeting.id), ["没有片段，跳过纪要生成"]
+    if not segments or meeting is None:
+        # 防御式收尾：调用方给不到会议或片段时返回结构合法的空纪要，
+        # 而不是抛 AttributeError（评测脚本少灌一次语料就踩过这个坑）
+        return Minutes(meeting_id=getattr(meeting, "id", "") or ""), [
+            "没有片段，跳过纪要生成"
+        ]
     if client is None or not getattr(client, "available", False):
         return Minutes(meeting_id=meeting.id), ["模型不可用，纪要待生成"]
 

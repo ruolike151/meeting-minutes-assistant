@@ -57,14 +57,20 @@ def write_mini_dataset(base: Path) -> Path:
                  {"task": "交付首页改版全套设计稿", "owner": "p_li",
                   "due": "2026-09-11", "evidence": ["m_20260911:s3"]}
              ],
-             "decisions": ["首页入口层级由三级简化至两级，活动展示区面积扩大一倍。"],
+             "decisions": [
+                 {"content": "首页入口层级由三级简化至两级，活动展示区面积扩大一倍。",
+                  "evidence": ["m_20260911:s3"]}
+             ],
              "risks": []},
             {"meeting_id": "m_20260909",
              "action_items": [
                  {"task": "与财务确认退款后积分已消费的处理方式", "owner": "p_sun",
                   "due": "2026-09-14", "evidence": ["m_20260909:s5"]}
              ],
-             "decisions": ["会员等级升级规则采用滚动 12 个月累计。"],
+             "decisions": [
+                 {"content": "会员等级升级规则采用滚动 12 个月累计。",
+                  "evidence": ["m_20260909:s7"]}
+             ],
              "risks": []},
             {"meeting_id": "m_20260904",
              "action_items": [
@@ -76,6 +82,8 @@ def write_mini_dataset(base: Path) -> Path:
         "review": [
             {"item_id": "m_20260911:a4", "kind": "action_item", "expected_action": "confirm"}
         ],
+        # 这个最小数据集只跑产品样例会议，不带真实语料
+        "meetings": [],
     }
     for key, filename in SECTION_FILES.items():
         (base / filename).write_text(
@@ -167,3 +175,21 @@ def test_estimate_calls_counts_by_mode() -> None:
     assert offline["total"] == 0, "离线不调模型"
     live = estimate_calls(dataset, RunConfig(run_type="live", judge_mode="llm"))
     assert live["total"] > 0 and live["judge"] > 0
+
+
+def test_minutes_eval_survives_missing_meeting(conn, settings: Settings) -> None:
+    """金标里的会议在库里不存在时不能抛异常，而是产出结构合法的空纪要。
+
+    真实教训：`generate_minutes` 里 `meeting.id` 没设防，
+    分项脚本少灌一次真实语料就整轮崩掉（错误消息只有 "NoneType has no attribute id"）。
+    """
+    from app.eval.dataset import EvalDataset, MinutesGold
+    from app.eval.runner import evaluate_minutes
+
+    dataset = EvalDataset(
+        version="test", minutes=[MinutesGold(meeting_id="m_not_in_db")]
+    )
+    metrics, details = evaluate_minutes(conn, settings, dataset, offline=True)
+    assert metrics["meetings"] == 1
+    assert metrics["schema_valid_rate"] == 1.0, "空纪要也是合法结构"
+    assert details[0]["action_items"]["predicted"] == 0

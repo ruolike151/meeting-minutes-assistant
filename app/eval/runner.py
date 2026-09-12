@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
+import traceback
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
@@ -24,6 +25,7 @@ from app.agent.minutes import generate_meeting_minutes
 from app.agent.pipeline import plain_text, respond
 from app.config import Settings
 from app.eval.dataset import EvalDataset, check_against_db, load_dataset
+from app.eval.fixtures import SAMPLES_AUDIO_DIR, ingest_real_meetings
 from app.eval.judge import rule_point_coverage, rule_support, sample_for_review
 from app.eval.metrics import (
     RefusalOutcome,
@@ -45,6 +47,8 @@ from app.store.repos import MeetingRepo, SegmentRepo, new_id
 from app.store.traces_repo import TraceRepo
 
 TASK_SIMILARITY_THRESHOLD = 0.75
+# 匹配阈值：文本相似度与证据重叠取较大者（见 `_match_actions` 的说明）
+TASK_MATCH_THRESHOLD = 0.5
 
 
 class EvalBudgetExceeded(RuntimeError):
@@ -184,6 +188,13 @@ def run(
     run_settings = prepare_settings(settings, config, run_dir)
     conn = bootstrap(run_settings)
     try:
+        # 真实会议语料灌进评测数据目录（产品样例库不动）：3 场样例 + 2 场真实录音
+        ingest_real_meetings(
+            conn,
+            dataset,
+            audio_source_dir=SAMPLES_AUDIO_DIR,
+            audio_target_dir=run_settings.audio_dir,
+        )
         problems = check_against_db(dataset, conn)
         if problems:
             raise ValueError("数据集与库内数据不一致：\n" + "\n".join(problems))
@@ -254,6 +265,7 @@ def evaluate_retrieval(
     ranks: list[int | None] = []
     cross_cases = 0
     cross_ok = 0
+    cross_hit = 0
     reranked_cases = 0
     rerank_reason = ""
     query_ms: list[float] = []
@@ -280,6 +292,9 @@ def evaluate_retrieval(
             returned = {key.split(":")[0] for key in ranked}
             cross_pass = bool(returned) and returned <= allowed
             cross_ok += 1 if cross_pass else 0
+            # 宽松口径：命中了允许会议里的片段就算（不要求"全部都在范围内"）。
+            # 两个口径一起报：严格版看"会不会串会场"，宽松版看"有没有捞到对的会"。
+            cross_hit += 1 if returned & allowed else 0
         if result.reranked:
             reranked_cases += 1
         if result.rerank_reason and not rerank_reason:
@@ -310,6 +325,7 @@ def evaluate_retrieval(
         else 0.0,
         "mrr": mrr(ranks),
         "cross_meeting_accuracy": round(cross_ok / cross_cases, 4) if cross_cases else 0.0,
+        "cross_meeting_hit_rate": round(cross_hit / cross_cases, 4) if cross_cases else 0.0,
         "cross_meeting_cases": cross_cases,
         # 重排的真实生效情况：没生效（权重缺失 / 未开启）时要能一眼看出来，
         # 否则消融表会出现"两行一模一样却没人发现"（这个坑踩过一次）
@@ -327,7 +343,19 @@ def evaluate_retrieval(
 def evaluate_routes(
     conn: sqlite3.Connection, settings: Settings, dataset: EvalDataset
 ) -> tuple[dict, list[dict]]:
-    """对话行为：意图 / 模式 / 范围三类标签的准确率，含多轮范围继承。"""
+    """对话行为：意图 / 模式 / 范围三类标签的准确率，含多轮范围继承。
+
+    范围金标支持 `"*"`（= 当前库里的全部会议）。**不要**在金标里硬编码会议清单：
+    语料一扩充，"这三场会"这类写法就会与事实不符，指标会莫名其妙地掉
+    （加真实语料时踩过一次，用例守住这条）。
+    """
+    all_meetings = sorted(
+        row["id"] for row in conn.execute("SELECT id FROM meetings").fetchall()
+    )
+
+    def expand(scope: list[str]) -> list[str]:
+        return all_meetings if "*" in scope else list(scope)
+
     intent_pairs: list[tuple[str, str]] = []
     mode_pairs: list[tuple[str, str]] = []
     scope_pairs: list[tuple[str, str]] = []
@@ -351,7 +379,7 @@ def evaluate_routes(
             settings=settings,
         )
         answer = result.answer
-        expected_scope = ",".join(sorted(case.scope))
+        expected_scope = ",".join(sorted(expand(case.scope)))
         actual_scope = ",".join(sorted(answer.scope_meeting_ids))
         intent_pairs.append((case.intent, answer.intent))
         mode_pairs.append((case.answer_mode, answer.answer_mode))
@@ -362,7 +390,7 @@ def evaluate_routes(
                 "expected": {
                     "intent": case.intent,
                     "answer_mode": case.answer_mode,
-                    "scope": sorted(case.scope),
+                    "scope": sorted(expand(case.scope)),
                 },
                 "actual": {
                     "intent": answer.intent,
@@ -521,7 +549,15 @@ def evaluate_minutes(
             )
             schema_ok += 1
         except Exception as error:  # noqa: BLE001 - 单场失败不该终止整轮评测
-            details.append({"meeting_id": gold.meeting_id, "error": str(error)})
+            details.append(
+                {
+                    "meeting_id": gold.meeting_id,
+                    "error": str(error),
+                    # 带上堆栈：只看错误消息定位不了"哪一行为什么"，
+                    # 真实语料第一次跑就靠它找到了 None 说话人的问题
+                    "traceback": traceback.format_exc(),
+                }
+            )
             continue
         matched, pairs = _match_actions(minutes.action_items, gold.action_items)
         matched_total += matched
@@ -531,9 +567,7 @@ def evaluate_minutes(
             if gold_item.owner:
                 owner_total += 1
                 owner_right += 1 if system_item.owner == gold_item.owner else 0
-        hits, total = _match_texts(
-            [decision.content for decision in minutes.decisions], gold.decisions, 0.5
-        )
+        hits, total = _match_decisions(minutes.decisions, gold.decisions)
         decision_hit += hits
         decision_total += total
         risk_hits, risk_tot = _match_texts(
@@ -548,6 +582,14 @@ def evaluate_minutes(
                     "predicted": len(minutes.action_items),
                     "gold": len(gold.action_items),
                     "matched": matched,
+                    # 逐条落下来：报告要能指出"哪条漏抽 / 哪条多抽"，
+                    # 否则读者只能看到一个分数，无法判断是模型的问题还是匹配器太严
+                    "predicted_tasks": [item.task for item in minutes.action_items],
+                    "gold_tasks": [item.task for item in gold.action_items],
+                    "matched_pairs": [
+                        {"predicted": system_item.task, "gold": gold_item.task}
+                        for system_item, gold_item in pairs
+                    ],
                 },
                 "decisions": {"hit": hits, "gold": total},
                 "risks": {"hit": risk_hits, "gold": risk_tot},
@@ -640,11 +682,27 @@ def _similarity(first: str, second: str) -> float:
 
 
 def _match_actions(system_items, gold_items, threshold: float = TASK_SIMILARITY_THRESHOLD):
-    """贪心一对一匹配系统待办与金标待办，返回 (匹配数, 配对列表)。"""
+    """贪心一对一匹配系统待办与金标待办，返回 (匹配数, 配对列表)。
+
+    判据是**二选一取大**：
+
+    * 事项文本相似度（difflib，≥0.75）；
+    * **证据片段重叠度**（交集的包含率 ≥0.5）。
+
+    为什么加第二条：模型会把同一件事说得更细（"交付设计稿" vs
+    "完成配色微调并交付全套设计稿"），纯文本匹配会把正确抽取判成漏抽。
+    本项目的产物本来就要求"每条结论绑定片段 ID"（约束 C4），
+    用证据当匹配键比抠字面更贴近语义，也更可解释。
+    """
     candidates = []
     for system_index, system_item in enumerate(system_items):
         for gold_index, gold_item in enumerate(gold_items):
-            score = _similarity(system_item.task, gold_item.task)
+            text_score = _similarity(system_item.task, gold_item.task)
+            evidence_score = _evidence_overlap(
+                getattr(system_item, "evidence", []) or [],
+                getattr(gold_item, "evidence", []) or [],
+            )
+            score = max(text_score, evidence_score)
             if gold_item.owner and system_item.owner:
                 score = score if system_item.owner == gold_item.owner else score - 0.2
             candidates.append((score, system_index, gold_index))
@@ -653,7 +711,7 @@ def _match_actions(system_items, gold_items, threshold: float = TASK_SIMILARITY_
     used_gold: set[int] = set()
     pairs = []
     for score, system_index, gold_index in candidates:
-        if score < threshold:
+        if score < TASK_MATCH_THRESHOLD:
             break
         if system_index in used_system or gold_index in used_gold:
             continue
@@ -661,6 +719,19 @@ def _match_actions(system_items, gold_items, threshold: float = TASK_SIMILARITY_
         used_gold.add(gold_index)
         pairs.append((system_items[system_index], gold_items[gold_index]))
     return len(pairs), pairs
+
+
+def _evidence_overlap(first: list[str], second: list[str]) -> float:
+    """两个条目的证据片段重叠度（包含率，忽略会议前缀）。
+
+    金标里的证据是全局键（`m_real_1:s3`），系统产出的是会议内 ID（`s3`），
+    因此比较前统一切到冒号后的局部 ID。
+    """
+    left = {value.split(":", 1)[-1] for value in first if value}
+    right = {value.split(":", 1)[-1] for value in second if value}
+    if not left or not right:
+        return 0.0
+    return len(left & right) / min(len(left), len(right))
 
 
 def _match_texts(system_texts: list[str], gold_texts: list[str], threshold: float):
@@ -679,6 +750,33 @@ def _match_texts(system_texts: list[str], gold_texts: list[str], threshold: floa
             used.add(best_index)
             hit += 1
     return hit, len(gold_texts)
+
+
+def _match_decisions(system_decisions, gold_decisions, threshold: float = 0.5):
+    """决议匹配：与待办同口径（文本相似度与证据重叠取较大者）。
+
+    只按文字比会把"模型换个说法"判成没命中——决议金标本身带证据片段，
+    证据对齐才反映"说的是不是同一件事"。
+    """
+    used: set[int] = set()
+    hit = 0
+    for gold in gold_decisions:
+        best_index, best_score = None, 0.0
+        for index, system in enumerate(system_decisions):
+            if index in used:
+                continue
+            score = max(
+                _similarity(system.content, gold.content),
+                _evidence_overlap(
+                    getattr(system, "evidence", []) or [], gold.evidence or []
+                ),
+            )
+            if score > best_score:
+                best_index, best_score = index, score
+        if best_index is not None and best_score >= threshold:
+            used.add(best_index)
+            hit += 1
+    return hit, len(gold_decisions)
 
 
 def write_artifacts(result: RunResult, output_dir: Path | None = None) -> Path:
@@ -713,6 +811,7 @@ __all__ = [
     "EvalBudgetExceeded",
     "RunConfig",
     "RunResult",
+    "TASK_MATCH_THRESHOLD",
     "build_encoder",
     "estimate_calls",
     "evaluate_minutes",

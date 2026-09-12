@@ -9,6 +9,7 @@
 | `qa_gold.json` | 问答：query → 金标要点 + 允许引用的片段集合 |
 | `minutes_gold.json` | 纪要：meeting_id → 待办 / 决议 / 风险 金标 |
 | `review_gold.json` | 协同：待确认条目 → 期望处理动作 |
+| `real_meetings.json` | 真实会议语料：元数据 + 转写片段 + 纪要金标（由 `scripts/build_eval_corpus.py` 合成） |
 
 三条硬规则（`check_against_db` 强制）：
 
@@ -34,6 +35,7 @@ SECTION_FILES = {
     "qa": "qa_gold.json",
     "minutes": "minutes_gold.json",
     "review": "review_gold.json",
+    "meetings": "real_meetings.json",
 }
 
 
@@ -82,12 +84,21 @@ class GoldAction(BaseModel):
     evidence: list[str] = Field(default_factory=list)
 
 
+class GoldDecision(BaseModel):
+    """决议金标：内容 + 证据片段（与待办同口径，便于按证据对齐而不是抠字面）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    content: str
+    evidence: list[str] = Field(default_factory=list)
+
+
 class MinutesGold(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     meeting_id: str
     action_items: list[GoldAction] = Field(default_factory=list)
-    decisions: list[str] = Field(default_factory=list)
+    decisions: list[GoldDecision] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
 
 
@@ -98,6 +109,60 @@ class ReviewGold(BaseModel):
     kind: str = "action_item"
     expected_action: str = "confirm"              # confirm | dismiss | edit
     note: str = ""
+
+
+class RealParticipant(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    name: str
+    role: str | None = None
+    label: str = ""                               # 转写稿里的说话人标签（A/B/C/D）
+
+
+class RealSegment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    start: float
+    end: float
+    speaker_id: str | None = None                 # 多人合说（GROUP）为 None
+    speaker_confidence: float = 1.0
+    text: str
+    note: str = ""
+
+
+class RealGoldAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    task: str
+    owner: str | None = None
+    due: str | None = None
+    evidence: list[str] = Field(default_factory=list)
+
+
+class RealMinutes(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decisions: list[GoldDecision] = Field(default_factory=list)
+    action_items: list[RealGoldAction] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+
+
+class RealMeeting(BaseModel):
+    """真实会议语料：转写片段 + 纪要金标，由评测运行器灌入评测专用的数据目录。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    meeting_id: str
+    title: str
+    date: str
+    time: str | None = None
+    duration: float = 0.0
+    audio_file: str | None = None
+    participants: list[RealParticipant] = Field(default_factory=list)
+    segments: list[RealSegment] = Field(default_factory=list)
+    minutes: RealMinutes = Field(default_factory=RealMinutes)
 
 
 class EvalDataset(BaseModel):
@@ -112,6 +177,7 @@ class EvalDataset(BaseModel):
     qa: list[QACase] = Field(default_factory=list)
     minutes: list[MinutesGold] = Field(default_factory=list)
     review: list[ReviewGold] = Field(default_factory=list)
+    meetings: list[RealMeeting] = Field(default_factory=list)
 
     def size(self) -> dict:
         return {
@@ -120,6 +186,8 @@ class EvalDataset(BaseModel):
             "qa": len(self.qa),
             "minutes": len(self.minutes),
             "review": len(self.review),
+            "real_meetings": len(self.meetings),
+            "real_segments": sum(len(item.segments) for item in self.meetings),
         }
 
 
@@ -150,7 +218,7 @@ def load_dataset(path: str | Path | None = None, *, settings=None) -> EvalDatase
         source = payload.get("source", source)
         notes.extend(payload.get("notes", []))
         sections[key] = payload.get("cases", [])
-    return EvalDataset(
+    dataset = EvalDataset(
         version=version,
         updated_at=updated_at,
         source=source,
@@ -160,7 +228,36 @@ def load_dataset(path: str | Path | None = None, *, settings=None) -> EvalDatase
         qa=[QACase.model_validate(item) for item in sections["qa"]],
         minutes=[MinutesGold.model_validate(item) for item in sections["minutes"]],
         review=[ReviewGold.model_validate(item) for item in sections["review"]],
+        meetings=[RealMeeting.model_validate(item) for item in sections["meetings"]],
     )
+    # 真实会议的纪要金标只在 real_minutes_gold.json 里写一次，
+    # 这里映射成统一的 MinutesGold，让纪要评测与其他会议走同一条路径。
+    dataset.minutes.extend(
+        MinutesGold(
+            meeting_id=case.meeting_id,
+            action_items=[
+                GoldAction(
+                    task=item.task,
+                    owner=item.owner,
+                    due=item.due,
+                    # 真实会议语料里的证据是会议内的局部 ID（s3），
+                    # 统一成全局键（m_real_1:s3），与其它金标口径一致
+                    evidence=["%s:%s" % (case.meeting_id, key) for key in item.evidence],
+                )
+                for item in case.minutes.action_items
+            ],
+            decisions=[
+                GoldDecision(
+                    content=item.content,
+                    evidence=["%s:%s" % (case.meeting_id, key) for key in item.evidence],
+                )
+                for item in case.minutes.decisions
+            ],
+            risks=list(case.minutes.risks),
+        )
+        for case in dataset.meetings
+    )
+    return dataset
 
 
 def check_against_db(dataset: EvalDataset, conn: sqlite3.Connection) -> list[str]:
@@ -205,8 +302,30 @@ def check_against_db(dataset: EvalDataset, conn: sqlite3.Connection) -> list[str
 
     for case in dataset.routes:
         for meeting_id in case.scope:
+            if meeting_id == "*":
+                continue  # 通配：表示"当前库里的全部会议"，由评测运行器展开
             if meeting_id not in meetings:
                 problems.append("路由金标会议不存在：%s（%s）" % (meeting_id, case.query))
+
+    # 真实会议语料的内部一致性：片段 ID 唯一、纪要金标只引用自己的片段
+    for meeting in dataset.meetings:
+        segment_ids = [segment.id for segment in meeting.segments]
+        if not segment_ids:
+            problems.append("真实会议没有片段：%s" % meeting.meeting_id)
+        if len(set(segment_ids)) != len(segment_ids):
+            problems.append("真实会议片段 ID 重复：%s" % meeting.meeting_id)
+        participant_ids = {item.id for item in meeting.participants}
+        for action in meeting.minutes.action_items:
+            if action.owner and action.owner not in participant_ids:
+                problems.append(
+                    "真实会议待办负责人不在参会人里：%s（%s）"
+                    % (action.owner, meeting.meeting_id)
+                )
+            for key in action.evidence:
+                if key not in segment_ids:
+                    problems.append(
+                        "真实会议待办证据不存在：%s:%s" % (meeting.meeting_id, key)
+                    )
 
     # 覆盖度：每场会议至少出现在一条检索与一条问答用例里
     qa_covered = {
@@ -225,6 +344,11 @@ __all__ = [
     "GoldAction",
     "MinutesGold",
     "QACase",
+    "RealGoldAction",
+    "RealMeeting",
+    "RealMinutes",
+    "RealParticipant",
+    "RealSegment",
     "RetrievalCase",
     "ReviewGold",
     "RouteCase",

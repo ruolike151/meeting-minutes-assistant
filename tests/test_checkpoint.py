@@ -65,3 +65,33 @@ def test_only_two_modules_import_langgraph() -> None:
         if pattern.search(path.read_text(encoding="utf-8")):
             offenders.append(relative)
     assert not offenders, "只有 graph.py 与 checkpoint.py 可以 import langgraph：%s" % offenders
+
+
+def test_chat_graph_state_round_trips_through_sqlite(conn, settings: Settings) -> None:
+    """检查点里的值必须**能读回来**，而不只是能写进去。
+
+    真实教训：序列化白名单只登记了 minutes 图的模型时，chat 图的
+    Answer / Draft / ChatResult 会被静默拦掉（写进去、读出来是 None），
+    表面上"多轮还能跑"（历史另有 DB 兜底），但图级恢复已经失效。
+    """
+    from app.agent.checkpoint import checkpoint_config, open_checkpointer, reset_cache
+    from app.agent.graph import build_graph
+    from app.agent.nodes import NodeContext
+    from app.agent.pipeline import stream
+
+    reset_cache()
+    conversation_id = None
+    for event, payload in stream(
+        conn, "官网改版周会定了什么？", conversation_id=None, settings=settings
+    ):
+        if event == "done":
+            conversation_id = payload.conversation_id
+    assert conversation_id
+
+    context = NodeContext.from_settings(conn, settings)
+    graph = build_graph(context, checkpointer=open_checkpointer(settings))
+    values = graph.get_state(checkpoint_config(conversation_id)).values or {}
+    assert values.get("answer") is not None, "Answer 必须能反序列化回来"
+    assert values.get("result") is not None, "ChatResult 必须能反序列化回来"
+    assert values.get("answer_draft") is not None, "Draft 必须能反序列化回来"
+    reset_cache()
