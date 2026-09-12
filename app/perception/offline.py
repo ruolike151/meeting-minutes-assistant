@@ -1,11 +1,13 @@
-"""离线固定数据后端（《技术方案》5、14.1）。
+"""离线固定数据后端（《技术方案》14.1，约束 C3）。
 
-为什么需要它：约束 C3 要求「无 GPU、无模型 Key 也要跑通全部测试」。
-离线后端把「一段音频」映射成一份固定的片段与纪要，
-于是上传 -> 阶段进度 -> 纪要 -> 追问 这条链路在任何人机器上都能验证。
+两个角色：
 
-M2 接入真实 WhisperX / ECAPA-TDNN 后，本文件保留为测试后端，
-上层只依赖 `process()` 的返回结构，不感知下面是模型还是固定数据。
+1. 测试与 CI 的默认后端（`MA_PERCEPTION_BACKEND` 默认就是 offline）；
+2. 真实后端（local）不可用时的兜底，保证演示不会因为少装一个依赖而开天窗。
+
+它实现与 local 后端完全相同的 `PerceptionBackend` 协议（`base.py`），
+因此契约测试对两者跑同一组断言。音频内容在这里被刻意忽略：
+固定脚本与上传的文件无关，所以离线后端不需要 ffmpeg，也不需要任何模型。
 """
 
 from __future__ import annotations
@@ -24,8 +26,9 @@ from app.domain.models import (
     Segment,
     SummaryTopic,
 )
+from app.perception.base import ProgressCallback, RawSegment, SpeakerTurn
 
-# 前端展示阶段进度用的四个阶段（对应原型里的处理流水线）
+# 前端展示阶段进度用的阶段（保持 M1 的文案，界面与原型一致）
 STAGES = [
     "音频标准化 · 16kHz 单声道",
     "语音转写 · WhisperX",
@@ -40,6 +43,7 @@ _SPEAKERS = [
     ("p_li", "李明", "设计"),
 ]
 
+# (片段 ID, 起, 止, 说话人, 声纹置信度, 文本)
 _TEMPLATE_SEGMENTS = [
     ("s1", 5, 58, "p_zhao", 0.96, "今天对齐一下双周进度，重点看支付模块这块。"),
     ("s2", 58, 240, "p_chen", 0.93,
@@ -59,20 +63,32 @@ class OfflinePerception:
 
     name = "offline"
 
-    def transcribe(self, audio_path: str | Path) -> list[Segment]:
-        """返回固定片段。真实后端在这里调用 ASR。"""
+    def stages(self) -> list[str]:
+        return list(STAGES)
+
+    def transcribe(self, audio_path: str | Path) -> list[RawSegment]:
+        """返回固定脚本的转写片段（不看音频内容）。"""
         return [
-            Segment(
-                id=seg_id,
-                meeting_id="",
-                start=start,
-                end=end,
-                speaker_id=speaker_id,
-                speaker_confidence=confidence,
-                text=text,
-            )
-            for seg_id, start, end, speaker_id, confidence, text in _TEMPLATE_SEGMENTS
+            RawSegment(start=start, end=end, text=text, confidence=1.0)
+            for _, start, end, _, _, text in _TEMPLATE_SEGMENTS
         ]
+
+    def identify_speakers(
+        self, audio_path: str | Path, segments: list[RawSegment]
+    ) -> list[SpeakerTurn]:
+        """离线后端的「声纹匹配」就是固定脚本里写死的说话人与置信度。"""
+        turns: list[SpeakerTurn] = []
+        for (_, _, _, speaker_id, confidence, _), segment in zip(_TEMPLATE_SEGMENTS, segments):
+            turns.append(
+                SpeakerTurn(
+                    start=segment.start,
+                    end=segment.end,
+                    speaker_id=speaker_id,
+                    confidence=confidence,
+                    status="accepted",
+                )
+            )
+        return turns
 
     def process(
         self,
@@ -82,11 +98,22 @@ class OfflinePerception:
         title: str,
         today: date | None = None,
         time_text: str | None = None,
-    ) -> tuple[Meeting, list[Segment], Minutes]:
-        """产出（会议, 片段, 纪要）三元组，并补齐 meeting_id。"""
+        progress: ProgressCallback | None = None,
+    ) -> tuple[Meeting, list[Segment]]:
+        """产出（会议, 片段）；片段 ID 与固定脚本一致，供纪要证据引用。"""
+        raws = self.transcribe(audio_path)
+        turns = self.identify_speakers(audio_path, raws)
         segments = [
-            segment.model_copy(update={"meeting_id": meeting_id})
-            for segment in self.transcribe(audio_path)
+            Segment(
+                id=template[0],
+                meeting_id=meeting_id,
+                start=raw.start,
+                end=raw.end,
+                speaker_id=turn.speaker_id,
+                speaker_confidence=turn.confidence,
+                text=raw.text,
+            )
+            for template, raw, turn in zip(_TEMPLATE_SEGMENTS, raws, turns)
         ]
         meeting = Meeting(
             id=meeting_id,
@@ -101,9 +128,15 @@ class OfflinePerception:
                 for speaker_id, name, role in _SPEAKERS
             ],
         )
-        return meeting, segments, self.minutes(meeting_id)
+        if progress is not None:
+            # 离线后端是瞬时完成的，这里逐条上报阶段，让前端仍能看到完整流水线；
+            # 演示节奏由 worker 里的 MA_STAGE_DELAY 控制（真实后端由模型耗时决定）。
+            for index, label in enumerate(self.stages()):
+                progress(index, label)
+        return meeting, segments
 
-    def minutes(self, meeting_id: str) -> Minutes:
+    def placeholder_minutes(self, meeting_id: str) -> Minutes | None:
+        """固定脚本自带"标准答案"纪要（M3 起由 LLM 生成，本方法返回值不再使用）。"""
         return Minutes(
             meeting_id=meeting_id,
             summary=[

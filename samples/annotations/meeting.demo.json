@@ -1,0 +1,75 @@
+{
+  "correction_note": "本文件用于修正 demo 中自动声纹匹配的错误。根据用户提供的会议正文，统一整理为简体中文结果：A 为项目经理，B 为运营专员，C 为 UI 设计师，D 为前端开发。GROUP 表示 B、C、D 合说。",
+  "participants": {
+    "A": "项目经理",
+    "B": "运营专员",
+    "C": "UI设计师",
+    "D": "前端开发",
+    "GROUP": "B/C/D 合说"
+  },
+  "segments": [
+    {
+      "id": 0,
+      "start": 0.031,
+      "end": 9.8,
+      "speaker": "A",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "各位早，今天开一个三分钟短会，同步下本周官网改版项目的进度，大家依次简单汇报，有问题当场沟通。首先运营这边先说。"
+    },
+    {
+      "id": 1,
+      "start": 9.8,
+      "end": 26.356,
+      "speaker": "B",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "好的。目前我们收集了20条用户反馈，主要问题是官网首页入口太深、活动弹窗不醒目，用户找不到核心服务入口。整体需求已经整理完毕，没有新增需求，全部同步给设计了，暂时无其他问题。"
+    },
+    {
+      "id": 2,
+      "start": 26.963,
+      "end": 43.8,
+      "speaker": "C",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "收到运营的需求，我已经完成了首页新版界面初稿，简化了入口层级，放大了活动展示区域。目前设计稿已经收尾，只差最后细节微调，今天中午之前可以全部交付给开发。"
+    },
+    {
+      "id": 3,
+      "start": 43.8,
+      "end": 56.208,
+      "speaker": "D",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "好的，我这边现有代码框架已经准备就绪，等待设计稿定稿。目前旧页面功能运行正常，没有bug。拿到设计稿后可以立刻开始迭代开发，不耽误整体工期。"
+    },
+    {
+      "id": 4,
+      "start": 56.798,
+      "end": 79.0,
+      "speaker": "A",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "清楚了。整体进度一切正常，核心卡点没有问题。我简单总结下：第一，设计中午准时交付全套稿件；第二，开发收到稿件后立即开工；第三，运营全程待命，随时同步用户疑问。本次项目严格按照原定时间节点推进，中途有任何突发问题，大家随时在群里同步。"
+    },
+    {
+      "id": 5,
+      "start": 79.0,
+      "end": 82.6,
+      "speaker": "GROUP",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "收到，没问题。"
+    },
+    {
+      "id": 6,
+      "start": 82.6,
+      "end": 85.199,
+      "speaker": "A",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "好，本次会议结束。"
+    }
+  ]
+}

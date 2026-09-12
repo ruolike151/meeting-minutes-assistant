@@ -1,13 +1,12 @@
-"""音频任务登记表（M1 为进程内实现）。
+"""音频任务的数据结构（持久化见 `tasks_repo.py`）。
 
-M1 要求「上传 -> 阶段进度 -> 生成纪要」这条链路能在离线后端跑通，
-任务状态先放进程内存即可；M2 接真实转写后换成带持久化的任务表，
-接口形状（POST /api/audio、GET /api/tasks/{id}/events）不变。
+M1 的时代任务状态放在进程内存里（一个 `registry` 字典），代价有两条：
+客户端断开 SSE 就没人推进任务、进程重启后任务全丢。
+M2 要跑真实转写（几十秒到几分钟），这两条都会变成事故，因此状态改存 SQLite。
 """
 
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -33,31 +32,5 @@ class TaskState:
             return 1.0
         if not self.stages:
             return 0.0
-        return round(self.stage_index / len(self.stages), 4)
-
-
-class TaskRegistry:
-    """最小可用的任务表。测试可以直接 clear() 复位。"""
-
-    def __init__(self) -> None:
-        self._tasks: dict[str, TaskState] = {}
-
-    def create(self, *, filename: str, path: Path, size: int, stages: list[str]) -> TaskState:
-        task_id = "t_" + uuid.uuid4().hex[:12]
-        task = TaskState(
-            id=task_id, filename=filename, path=Path(path), size=size, stages=list(stages)
-        )
-        self._tasks[task_id] = task
-        return task
-
-    def get(self, task_id: str) -> TaskState | None:
-        return self._tasks.get(task_id)
-
-    def all(self) -> list[TaskState]:
-        return list(self._tasks.values())
-
-    def clear(self) -> None:
-        self._tasks.clear()
-
-
-registry = TaskRegistry()
+        reached = max(0, min(self.stage_index, len(self.stages)))
+        return round(reached / len(self.stages), 4)

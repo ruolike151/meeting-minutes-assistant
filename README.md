@@ -40,6 +40,30 @@ M1 的规则路由与关键词检索是**可替换的临时实现**，
 
 ---
 
+## M2 交付了什么（感知层）
+
+按《技术方案》17 节，M2 的目标是「`perception/` 接入真实转写与声纹，`offline.py` 保留为测试后端」。
+
+| 交付项 | 落地位置 | 说明 |
+| --- | --- | --- |
+| 感知层契约 | `app/perception/base.py` | `PerceptionBackend` 协议 + `RawSegment` / `SpeakerTurn` 数据契约 |
+| 后端工厂 | `app/perception/factory.py` | `MA_PERCEPTION_BACKEND=offline\|local\|auto`；`local` 不可用时回落离线后端并给出原因，`MA_PERCEPTION_STRICT=1` 时改为直接报错 |
+| 音频标准化 | `app/perception/audio_io.py` | ffmpeg → 16kHz 单声道；无 ffmpeg 时 wav 直通（约束 C3） |
+| 转写 | `app/perception/transcribe.py` | faster-whisper（懒加载、VAD、片段合并/切分），片段粒度 1.2–25 秒 |
+| 声纹 | `app/perception/embedding.py`、`voiceref.py` | SpeechBrain ECAPA-TDNN（VoxCeleb 192 维）+ 滑窗匹配（2.5s/1.25s、每人 top-3 相似度均值、margin 判定） |
+| 身份对齐 | `app/perception/align.py` | 片段 × 声纹窗口按「重叠时长 × 置信度」加权投票；无证据则判未识别 |
+| 声纹库 | `app/store/speakers_repo.py`、`app/tools/speakers.py`、`scripts/enroll_speaker.py` | 全局发言人表 + 多枚向量存 BLOB；`register_speaker` 工具补齐（文档 8 节契约） |
+| 任务执行 | `app/store/tasks_repo.py`、`app/api/audio.py` | 后台单线程池执行 + 任务状态落库；SSE 改为轮询进度，断流不再中断处理 |
+| 模型与素材 | `model/`（不入库）、`samples/` | 权重由 `scripts/download_models.py` 下载；`samples/` 含 2 场会议、4 段注册音频与人工标注 |
+| 评测 | `scripts/eval_perception.py`、`docs/感知层评测报告.md` | 窗口级准确率、宏平均召回、混淆矩阵、CER/WER、RTF |
+
+**实测（`meeting.mp3`，86.5 秒，4 人，faster-whisper small + ECAPA）**：
+窗口级说话人准确率 **93.75%**、宏平均召回 **92.86%**、片段级准确率 **100%**；
+端到端 RTF **0.093**（RTX 4060 / CUDA）与 **0.484**（纯 CPU）。与历史项目（同为 ECAPA 方案）的
+93.75% / 92.86% 对齐，说明移植后的链路没有退化。
+
+---
+
 ## 快速开始
 
 虚拟环境按要求建在项目根目录下：`meeting_assistant/`（已加入 `.gitignore`，不入库）。
@@ -74,6 +98,33 @@ start http://127.0.0.1:8000
 
 ---
 
+### 跑真实感知链路（可选，需要额外依赖）
+
+```powershell
+# 1. 安装感知层依赖（CUDA 版 torch 约 2.5GB；没有 GPU 也能装 CPU 版跑通）
+.\meeting_assistant\Scripts\python.exe -m pip install -r requirements-perception.txt
+
+# 2. 下载权重到 model/（约 550MB：small 转写模型 + ECAPA 声纹模型）
+.\meeting_assistant\Scripts\python.exe scripts\download_models.py --sizes small
+
+# 3. 用样例音频注册 4 个发言人声纹
+.\meeting_assistant\Scripts\python.exe scripts\enroll_samples.py
+
+# 4. 跑一遍真实链路并输出评测报告
+.\meeting_assistant\Scripts\python.exe scripts\smoke_perception.py --meeting samples\audio\meeting.mp3
+.\meeting_assistant\Scripts\python.exe scripts\eval_perception.py --skip-enroll
+```
+
+默认后端仍是 `offline`（固定样例数据），要启用真实模型：
+
+```powershell
+$env:MA_PERCEPTION_BACKEND = "local"
+```
+
+模型权重与样例音频的说明见 [`samples/README.md`](samples/README.md)。
+
+---
+
 ## 运行测试
 
 ```powershell
@@ -105,6 +156,9 @@ app/
   store/             SQLite 建表迁移、仓储、种子数据、任务表
   domain/            领域模型（Pydantic）
 web/                 无构建前端：index.html / styles.css / app.js + 4 个 ES 模块
+scripts/             运维与评测脚本：下模型 / 注册声纹 / 冒烟 / 评测
+samples/             样例素材：2 场会议 + 4 段注册音频 + 人工标注（M2 评测基准）
+model/               模型权重目录（不入库，由 scripts/download_models.py 生成）
 tests/               领域 / 存储 / 检索 / 路由 / 编排 / 工具 / API / 端到端 / 前端契约 / 文档一致性
 prototype/           交互原型（界面基线，见其 README）
 docs/                产品设计文档与技术方案
@@ -159,7 +213,7 @@ M1 的口径：命中片段覆盖率 < 0.34 即拒答。
 
 | 阶段 | 要做的事 | 落在哪 |
 | --- | --- | --- |
-| M2 感知 | 接入真实转写与声纹，`offline.py` 降级为测试后端 | `app/perception/` |
+| M2 感知 ✅ | 接入真实转写与声纹，`offline.py` 降级为测试后端；实测窗口级准确率 93.75%、宏平均召回 92.86%、RTF 0.09（GPU）/ 0.48（CPU） | `app/perception/`、`scripts/` |
 | M3 编排与检索 | LangGraph 状态图（路由/澄清/拒答/重试）、向量召回 + RRF + 重排、LLM 合成 | `app/agent/`、`app/retrieval/` |
 | M4 协同 | checkpointer + interrupt 支撑待确认区挂起恢复、证据回跳、override 完整交互 | `app/agent/`、`web/` |
 | M5 评测 | 标注集、Recall@k / 拒答正确率 / 成本指标、Langfuse 报告 | `tests/`、`docs/` |

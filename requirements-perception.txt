@@ -1,0 +1,21 @@
+# 会议纪要助手 · M2 感知层可选依赖
+#
+# 为什么不放进 requirements.txt：默认感知后端是 offline，这些依赖不装也能跑通
+# 全部测试（约束 C3）。只有需要真实转写 / 声纹时才安装。
+#
+# 安装（会自动带 CUDA 版 torch，约 2.5GB）：
+#   meeting_assistant\Scripts\python.exe -m pip install -r requirements-perception.txt
+
+--extra-index-url https://download.pytorch.org/whl/cu128
+
+torch==2.8.0+cu128
+torchaudio==2.8.0+cu128
+faster-whisper==1.2.1
+speechbrain==1.1.0
+hyperpyyaml==1.2.3
+sentencepiece==0.2.2
+soundfile==0.14.0
+numpy==2.5.1
+
+# 评测（M2 的 CER/WER 指标，见 scripts/eval_perception.py）
+jiwer==4.0.0

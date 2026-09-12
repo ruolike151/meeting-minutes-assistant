@@ -1,14 +1,19 @@
-"""音频上传与任务进度接口。
+"""音频上传与任务进度接口（M2 T6：后台执行 + 轮询进度）。
 
-M1 的任务执行是「订阅即推进」：`GET /api/tasks/{id}/events` 一边推阶段事件
-一边调用离线感知后端。这样没有后台线程也能演示完整链路，
-M2 换成真实任务队列时接口形状不变。
+M1 是「订阅即推进」：只有客户端订阅 SSE 才真正开始处理，断开连接任务就没人推进。
+M2 改成：
+
+* `POST /api/audio` 落盘、建任务行、提交后台 worker，立刻返回 task_id；
+* 后台单线程池跑感知后端，逐阶段把进度写进 `tasks` 表；
+* `GET /api/tasks/{id}/events` 只轮询任务行，把状态翻译成 SSE 事件。
+
+好处是页面刷新、断网重连都不影响处理（真实转写要几十秒到几分钟）。
+客户端晚连也能看到完整流水线：已经到达的阶段会被逐条补发。
 """
 
 from __future__ import annotations
 
 import os
-import sqlite3
 import time
 from typing import Iterator
 
@@ -20,22 +25,23 @@ from app.api.schemas import AudioUploadResponse, TaskStatus
 from app.api.sse import SSE_HEADERS, sse_event
 from app.config import Settings
 from app.store.db import connect
-from app.store.tasks import TaskState, registry
-from app.tools.audio import execute_task, fail_task, register_audio
+from app.store.tasks import TaskState
+from app.store.tasks_repo import TaskRepo
+from app.tools.audio import register_audio
 
 router = APIRouter(prefix="/api", tags=["audio"])
 
-# 阶段之间的小停顿：离线后端是瞬时完成的，留一点间隔前端才看得到进度。
-# 真实转写（M2）本身要几十秒，这个开关只是为了让演示与测试都舒服。
-STAGE_DELAY_ENV = "MA_STAGE_DELAY"
-DEFAULT_STAGE_DELAY = 0.12
+# 轮询间隔：本地 SQLite 查询是微秒级，50ms 足够让阶段进度看起来是实时的
+POLL_SECONDS = 0.05
+TASK_TIMEOUT_ENV = "MA_TASK_TIMEOUT"
+DEFAULT_TASK_TIMEOUT = 1800.0
 
 
-def stage_delay() -> float:
+def task_timeout() -> float:
     try:
-        return max(0.0, float(os.environ.get(STAGE_DELAY_ENV, DEFAULT_STAGE_DELAY)))
+        return max(1.0, float(os.environ.get(TASK_TIMEOUT_ENV, DEFAULT_TASK_TIMEOUT)))
     except (TypeError, ValueError):
-        return DEFAULT_STAGE_DELAY
+        return DEFAULT_TASK_TIMEOUT
 
 
 def to_status(task: TaskState) -> TaskStatus:
@@ -48,6 +54,14 @@ def to_status(task: TaskState) -> TaskStatus:
         meeting_id=task.meeting_id,
         error=task.error,
     )
+
+
+def load_task(settings: Settings, task_id: str) -> TaskState | None:
+    conn = connect(settings.db_path)
+    try:
+        return TaskRepo(conn).get(task_id)
+    finally:
+        conn.close()
 
 
 @router.post("/audio", response_model=AudioUploadResponse)
@@ -66,7 +80,7 @@ async def upload_audio(
 
 @router.get("/tasks/{task_id}", response_model=TaskStatus)
 def get_task(task_id: str, settings: Settings = Depends(get_settings)) -> TaskStatus:
-    task = registry.get(task_id)
+    task = load_task(settings, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="任务不存在")
     return to_status(task)
@@ -76,44 +90,54 @@ def get_task(task_id: str, settings: Settings = Depends(get_settings)) -> TaskSt
 def task_events(
     task_id: str, settings: Settings = Depends(get_settings)
 ) -> StreamingResponse:
-    def encode(event: str, data: object) -> str:
-        return sse_event(event, data)
+    def stage_event(task: TaskState, index: int) -> str:
+        total = len(task.stages) or 1
+        return sse_event(
+            "stage",
+            {
+                "index": index,
+                "label": task.stages[index] if index < len(task.stages) else "",
+                "progress": round((index + 1) / total, 4),
+            },
+        )
 
     def generator() -> Iterator[str]:
-        task = registry.get(task_id)
-        if task is None:
-            yield encode("error", {"message": "任务不存在"})
-            return
-        if task.status == "done" and task.meeting_id:
-            yield encode("result", {"meeting_id": task.meeting_id, "status": task.status})
-            yield encode("done", {"task_id": task.id, "meeting_id": task.meeting_id})
-            return
-
         # SSE 在独立线程里迭代，必须自己开连接（SQLite 连接不能跨线程复用）
         conn = connect(settings.db_path)
-        delay = stage_delay()
         try:
-            total = len(task.stages)
-            for index, label in enumerate(task.stages):
-                task.stage_index = index
-                yield encode(
-                    "stage",
-                    {
-                        "index": index,
-                        "label": label,
-                        "progress": round(index / total, 4) if total else 0,
-                    },
-                )
-                if delay:
-                    time.sleep(delay)
-            try:
-                meeting = execute_task(conn, task)
-            except Exception as error:  # noqa: BLE001 - 任务失败要转成事件而不是 500
-                fail_task(task, error)
-                yield encode("error", {"message": task.error or "处理失败"})
+            repo = TaskRepo(conn)
+            task = repo.get(task_id)
+            if task is None:
+                yield sse_event("error", {"message": "任务不存在"})
                 return
-            yield encode("result", {"meeting_id": meeting.id, "title": meeting.title})
-            yield encode("done", {"task_id": task.id, "meeting_id": meeting.id})
+
+            total = len(task.stages)
+            emitted = 0
+            deadline = time.monotonic() + task_timeout()
+            while True:
+                current = repo.get(task_id) or task
+                while emitted < min(current.stage_index, total):
+                    yield stage_event(current, emitted)
+                    emitted += 1
+                if current.status in ("done", "failed"):
+                    # 收尾：把没发过的阶段补齐，前端始终看到完整流水线
+                    while emitted < total:
+                        yield stage_event(current, emitted)
+                        emitted += 1
+                    if current.status == "failed":
+                        yield sse_event("error", {"message": current.error or "处理失败"})
+                        return
+                    yield sse_event(
+                        "result", {"meeting_id": current.meeting_id, "status": current.status}
+                    )
+                    yield sse_event(
+                        "done", {"task_id": current.id, "meeting_id": current.meeting_id}
+                    )
+                    return
+                if time.monotonic() > deadline:
+                    yield sse_event("error", {"message": "任务处理超时"})
+                    return
+                time.sleep(POLL_SECONDS)
         finally:
             conn.close()
 

@@ -5,14 +5,16 @@ from __future__ import annotations
 from app.domain.models import Message, global_item_id
 from app.store.bootstrap import seed_sample_data
 from app.store.conversations_repo import ConversationRepo
-from app.store.db import migrate, schema_version
+from app.store.db import MIGRATIONS, migrate, schema_version
 from app.store.minutes_repo import MinutesRepo, OverrideRepo
 from app.store.repos import MeetingRepo, SegmentRepo
 
 
 def test_migration_is_idempotent(conn) -> None:
-    assert schema_version(conn) == 1
-    assert migrate(conn) == 1
+    """迁移按版本叠加，重复调用不重复执行（M2 起是 v2）。"""
+    latest = MIGRATIONS[-1][0]
+    assert schema_version(conn) == latest
+    assert migrate(conn) == latest
     tables = {
         row["name"]
         for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -26,8 +28,40 @@ def test_migration_is_idempotent(conn) -> None:
         "messages",
         "action_item_overrides",
         "llm_cache",
+        # M2 新增：声纹库与任务状态
+        "speakers",
+        "speaker_embeddings",
+        "tasks",
     ):
         assert table in tables
+
+
+def test_migration_v1_to_v2_adds_m2_tables(tmp_path) -> None:
+    """老库（v1）升级到 v2 时只加表，不动已有数据。"""
+    from app.config import Settings
+    from app.store.db import connect, migrate
+
+    settings = Settings.from_env(tmp_path / "data")
+    settings.ensure_dirs()
+    conn = connect(settings.db_path)
+    try:
+        # 先只跑 v1，模拟 M1 时期的库
+        for version, script in MIGRATIONS:
+            if version == 1:
+                conn.executescript(script)
+                conn.execute("PRAGMA user_version = 1")
+        conn.commit()
+        assert schema_version(conn) == 1
+
+        assert migrate(conn) == MIGRATIONS[-1][0]
+        assert schema_version(conn) == MIGRATIONS[-1][0]
+        tables = {
+            row["name"]
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        }
+        assert {"speakers", "speaker_embeddings", "tasks"} <= tables
+    finally:
+        conn.close()
 
 
 def test_seed_is_idempotent(conn) -> None:

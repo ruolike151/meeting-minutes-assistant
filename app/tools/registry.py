@@ -25,6 +25,11 @@ from app.tools.meetings import (
     list_meetings,
     update_action_item,
 )
+from app.tools.speakers import (
+    RegisterSpeakerInput,
+    RegisterSpeakerOutput,
+    register_speaker,
+)
 from app.tools.search import (
     FlagUncertaintyInput,
     FlagUncertaintyOutput,
@@ -79,10 +84,16 @@ def _flag_handler(ctx: ToolContext, payload: BaseModel) -> BaseModel:
     return flag_uncertainty(ctx.conn, payload)  # type: ignore[arg-type]
 
 
+def _register_speaker_handler(ctx: ToolContext, payload: BaseModel) -> BaseModel:
+    if ctx.settings is None:
+        raise RuntimeError("register_speaker 需要 ToolContext.settings")
+    return register_speaker(ctx.settings, ctx.conn, payload)  # type: ignore[arg-type]
+
+
 def _audio_handler(ctx: ToolContext, payload: BaseModel) -> BaseModel:
     if ctx.settings is None:
         raise RuntimeError("process_audio 需要 ToolContext.settings")
-    return process_audio(ctx.settings, payload)  # type: ignore[arg-type]
+    return process_audio(ctx.settings, payload, ctx.conn)  # type: ignore[arg-type]
 
 
 TOOL_SPECS: tuple[ToolSpec, ...] = (

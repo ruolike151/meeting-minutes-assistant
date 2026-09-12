@@ -1,0 +1,228 @@
+{
+  "correction_note": "本文件用于修正 meeting2.mp3 的 demo 输出。根据用户提供的会议正文整理为简体中文结果：A 为项目负责人，B 为市场专员，C 为设计专员，D 为执行专员。时间戳基于 WhisperX 自动片段和会议内容顺序做近似对齐。",
+  "participants": {
+    "A": "项目负责人",
+    "B": "市场专员",
+    "C": "设计专员",
+    "D": "执行专员",
+    "GROUP": "B/C/D 合说"
+  },
+  "segments": [
+    {
+      "id": 0,
+      "start": 0.149,
+      "end": 29.866,
+      "speaker": "A",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "各位，现在召开本周的项目进度短会，主要针对本月新品推广活动做阶段性复盘，同步各自工作进度，梳理现存问题，明确接下来的工作安排。会议控制在十五分钟左右，大家简洁发言、重点突出，现在正式开始。首先，由市场岗先同步整体数据和对外推广情况。"
+    },
+    {
+      "id": 1,
+      "start": 30.203,
+      "end": 48.0,
+      "speaker": "B",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "好的。目前新品线上推广已经开展一周，我先同步整体情况。首先，我们在短视频平台、朋友圈推广和社群渠道都做了曝光投放，整体曝光量达标预期，但点击转化率比预估略低一点。"
+    },
+    {
+      "id": 2,
+      "start": 48.0,
+      "end": 65.5,
+      "speaker": "B",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "主要有两个问题：第一，用户看完推广内容后，对产品核心优势理解不够清晰，很多咨询用户仍在反复询问相同基础问题；第二，目前缺少配套的详细宣传长图和介绍海报，我对外发素材时只有简短文案，视觉素材不足，导致用户停留时间短、转化弱。"
+    },
+    {
+      "id": 3,
+      "start": 65.5,
+      "end": 79.411,
+      "speaker": "B",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "另外，目前线下预约咨询量是稳步上涨的，整体大盘没有问题。后续如果物料补齐、宣传话术优化，转化率应该可以顺利达标。我的整体工作进度正常，没有拖延，以上是我的汇报。"
+    },
+    {
+      "id": 4,
+      "start": 79.411,
+      "end": 88.5,
+      "speaker": "A",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "好的，我总结一下市场这边的情况：曝光达标、转化偏弱，核心问题是宣传物料不足、内容亮点不够直观。接下来请设计岗同步物料制作进度，看看目前卡点在哪里。"
+    },
+    {
+      "id": 5,
+      "start": 88.5,
+      "end": 101.956,
+      "speaker": "C",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "收到。本次活动需要的主海报、详情介绍图、活动引流图一共六套物料，目前我已经完成了三套初稿，主视觉风格已经确定，整体符合品牌调性。"
+    },
+    {
+      "id": 6,
+      "start": 102.648,
+      "end": 123.218,
+      "speaker": "C",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "目前存在两个需要同步的问题：第一，前期市场给到的活动优惠细则有过一次微调，导致我之前做的两张海报需要修改信息，耽误了一点进度；第二，目前缺少最终版的产品核心卖点文案，我在做详情页物料时，没办法精准突出重点，只能暂时预留位置。"
+    },
+    {
+      "id": 7,
+      "start": 123.488,
+      "end": 137.5,
+      "speaker": "C",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "按照目前节奏，今天下班前可以完成全部初稿，明天上午完成全部修改和精修，准时交付所有物料。如果后续文案能尽快定稿，我可以提前完成交付。"
+    },
+    {
+      "id": 8,
+      "start": 137.5,
+      "end": 146.573,
+      "speaker": "A",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "明白。也就是说，进度基本可控，主要卡点是最终文案确认和信息修改返工。后续我会对接统一最终文案，避免反复修改耽误设计进度。接下来由执行专员同步落地、对接和资源跟进情况。"
+    },
+    {
+      "id": 9,
+      "start": 146.573,
+      "end": 175.7,
+      "speaker": "D",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "好的。我主要负责活动落地对接、合作渠道跟进和后台信息整理。目前所有合作渠道对接正常，对方配合度很高，排期全部确认完毕。活动报名入口、表单链接、后台统计功能都已经测试完成，没有功能问题，可以随时上线使用。"
+    },
+    {
+      "id": 10,
+      "start": 176.155,
+      "end": 190.5,
+      "speaker": "D",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "目前遇到的问题是：前期预热节奏偏慢，线下门店的宣导提示不够统一，部分门店还没有完全熟悉本次新品活动政策，后续落地执行可能会出现口径不统一的情况。"
+    },
+    {
+      "id": 11,
+      "start": 190.5,
+      "end": 202.598,
+      "speaker": "D",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "另外，我这边已经整理好了活动执行清单、每日跟进表格，只要物料到位、宣传统一，后续落地执行可以全程无缝衔接，不会耽误活动上线时间。"
+    },
+    {
+      "id": 12,
+      "start": 203.088,
+      "end": 230.527,
+      "speaker": "A",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "清楚了。我把大家刚刚汇报的所有问题统一梳理一遍，方便我们对齐整改。第一，市场端：曝光充足、转化不足，原因是物料缺失、卖点不直观，后续物料到位后及时更新对外宣传内容，同步优化咨询话术。"
+    },
+    {
+      "id": 13,
+      "start": 231.185,
+      "end": 247.0,
+      "speaker": "A",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "第二，设计端：物料进度正常，受文案变动、信息调整影响有小幅返工，我今天内输出最终定稿版活动文案和优惠规则，杜绝反复修改。"
+    },
+    {
+      "id": 14,
+      "start": 247.0,
+      "end": 260.058,
+      "speaker": "A",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "第三，执行端：功能、渠道全部就绪，但门店宣导不统一、预热节奏慢，后续由你统一下发活动标准话术，同步给所有门店。接下来我明确一下接下来三天的具体分工。"
+    },
+    {
+      "id": 15,
+      "start": 260.632,
+      "end": 275.0,
+      "speaker": "A",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "首先B市场：今天下午更新全套对外宣传文案，待设计物料交付后，第一时间替换所有渠道素材，同步跟进每日转化数据，晚上做简短数据同步。"
+    },
+    {
+      "id": 16,
+      "start": 275.0,
+      "end": 286.94,
+      "speaker": "A",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "其次C设计：收到我定稿的文案后，完成剩余物料制作和细节精修，明天上午10点前交付全部物料，交付后同步备份归档。"
+    },
+    {
+      "id": 17,
+      "start": 287.564,
+      "end": 303.5,
+      "speaker": "A",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "然后D执行：今天内完成所有门店的活动政策同步，统一讲解口径，检查一遍所有活动链接、报名通道，确保活动零故障上线。大家手上还有没有临时新增问题、或者无法推进的卡点，可以现在直接提出。"
+    },
+    {
+      "id": 18,
+      "start": 303.5,
+      "end": 307.5,
+      "speaker": "B",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "我这边没有问题，拿到物料即可立刻更新推广内容。"
+    },
+    {
+      "id": 19,
+      "start": 307.5,
+      "end": 311.5,
+      "speaker": "C",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "我这边没问题，等待最终文案即可按时交付。"
+    },
+    {
+      "id": 20,
+      "start": 311.5,
+      "end": 316.066,
+      "speaker": "D",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "我这边也可以按时完成，无卡点。"
+    },
+    {
+      "id": 21,
+      "start": 316.724,
+      "end": 345.614,
+      "speaker": "A",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "好，那我们整体进度全部可控，问题全部梳理完毕，分工明确、责任到人。最后我做一个整体总结：本次新品推广活动前期铺垫整体顺利，主要优化方向就是统一文案、补齐物料、规范落地、提升转化。接下来大家严格按照刚刚安排的时间节点推进，有突发问题随时在工作群同步，不要积压问题。明天下午我们再做一次简短进度抽查。"
+    },
+    {
+      "id": 22,
+      "start": 345.901,
+      "end": 352.0,
+      "speaker": "A",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "如果大家没有其他补充，本次十五分钟工作会议到此结束。"
+    },
+    {
+      "id": 23,
+      "start": 352.0,
+      "end": 357.983,
+      "speaker": "GROUP",
+      "speaker_confidence": 1.0,
+      "speaker_status": "corrected",
+      "text": "收到，没问题。"
+    }
+  ]
+}

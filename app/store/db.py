@@ -107,7 +107,47 @@ CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id
 CREATE INDEX IF NOT EXISTS idx_overrides_meeting ON action_item_overrides(meeting_id);
 """
 
-MIGRATIONS: list[tuple[int, str]] = [(1, SCHEMA_V1)]
+SCHEMA_V2 = """
+-- 全局发言人（声纹库）：participants 是「某场会议的参会人」，
+-- speakers 是「一个人」，两者分开存才能跨会议复用声纹（《技术方案》5.3）。
+CREATE TABLE IF NOT EXISTS speakers(
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL UNIQUE,
+    role       TEXT,
+    encoder    TEXT NOT NULL,
+    dim        INTEGER NOT NULL,
+    centroid   BLOB,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+-- 注册音频切窗后得到的多枚向量。匹配用的是「每人 top-k 相似度均值」，
+-- 因此必须存矩阵而不只是质心（这是参考实现的关键细节）。
+CREATE TABLE IF NOT EXISTS speaker_embeddings(
+    speaker_id TEXT NOT NULL REFERENCES speakers(id) ON DELETE CASCADE,
+    idx        INTEGER NOT NULL,
+    vector     BLOB NOT NULL,
+    PRIMARY KEY(speaker_id, idx)
+);
+
+-- 音频任务状态落库：M1 放在进程内存里，断流即中断、重启即丢失。
+CREATE TABLE IF NOT EXISTS tasks(
+    id          TEXT PRIMARY KEY,
+    filename    TEXT NOT NULL,
+    path        TEXT NOT NULL,
+    size        INTEGER NOT NULL DEFAULT 0,
+    status      TEXT NOT NULL,
+    stage_index INTEGER NOT NULL DEFAULT 0,
+    stages      TEXT NOT NULL,
+    meeting_id  TEXT,
+    error       TEXT,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+"""
+MIGRATIONS: list[tuple[int, str]] = [(1, SCHEMA_V1), (2, SCHEMA_V2)]
 
 
 def connect(db_path: str | Path) -> sqlite3.Connection:
@@ -124,6 +164,9 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # WAL：M2 起后台 worker 与请求线程会同时读写同一个库文件，
+    # 默认的 rollback journal 会让两边互相等锁。
+    conn.execute("PRAGMA journal_mode = WAL")
     return conn
 
 
