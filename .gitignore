@@ -8,12 +8,17 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+.pytest_tmp/
 
 # 运行时数据（SQLite、音频、导出产物）
 data/
 
 # 模型权重（约 165MB，由 scripts/download_models.py 下载，不入库）
 model/
+
+# 本地密钥与运行配置：模板是 .env.example，真实 .env 绝不入库
+.env
+.env.local
 
 # 编辑器与系统
 .idea/

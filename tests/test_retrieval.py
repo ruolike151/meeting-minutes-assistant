@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from app.retrieval.encoder import FakeEncoder, HashingEmbedder
+from app.retrieval.index import ensure_meeting_index
 from app.retrieval.keyword import search
 from app.retrieval.pipeline import retrieve
 from app.retrieval.tokenize import content_tokens, match_expression, tokenize_for_index
+from app.store.repos import SegmentRepo
 
 
 def test_tokenize_for_index_is_space_separated() -> None:
@@ -62,3 +65,76 @@ def test_retrieve_empty_query_is_refused(conn) -> None:
     result = retrieve(conn, "？？？")
     assert result.refused is True
     assert result.hits == []
+
+
+# -- M3：混合检索（向量 + RRF）------------------------------------------
+
+
+def test_hybrid_can_answer_when_wording_differs(conn) -> None:
+    """M1 的短板：用户换个说法，字面覆盖率必然很低，语义相似度要能救回来。"""
+    target = SegmentRepo(conn).list_for_meeting("m_20260909")[1]
+    query = "积分规则到底怎么算"
+    encoder = FakeEncoder(
+        {query: [1.0, 0.0], target.text: [1.0, 0.0]}, default=[0.0, 1.0], dim=2
+    )
+    ensure_meeting_index(conn, encoder, "m_20260909")
+
+    keyword_only = retrieve(conn, query, meeting_ids=["m_20260909"])
+    hybrid = retrieve(conn, query, meeting_ids=["m_20260909"], encoder=encoder)
+
+    assert hybrid.refused is False
+    assert hybrid.is_hybrid is True
+    assert hybrid.encoder == "fake#2"
+    assert hybrid.best_cosine == 1.0
+    assert (target.meeting_id, target.id) in hybrid.segment_keys
+    assert keyword_only.coverage <= hybrid.coverage or hybrid.coverage == 0.0
+
+
+def test_hybrid_still_refuses_out_of_domain(conn) -> None:
+    """两个信号都不达标才拒答：域外问题在混合检索下也必须拒答。"""
+    encoder = HashingEmbedder(dim=64)
+    ensure_meeting_index(conn, encoder, "m_20260911")
+    result = retrieve(conn, "公司食堂今天中午吃什么？", encoder=encoder)
+    assert result.refused is True
+    assert result.best_cosine is not None
+    assert "低于阈值" in result.reason
+
+
+def test_hybrid_records_sources_and_counts(conn) -> None:
+    encoder = HashingEmbedder(dim=64)
+    ensure_meeting_index(conn, encoder, "m_20260911")
+    result = retrieve(conn, "谁提到了活动弹窗的问题？", encoder=encoder)
+    assert result.refused is False
+    assert result.keyword_hits > 0
+    sources = {hit.source for hit in result.hits}
+    assert sources <= {"keyword", "vector", "both"}
+    assert "keyword" in sources or "both" in sources
+
+
+def test_date_filter_narrows_scope(conn) -> None:
+    encoder = HashingEmbedder(dim=64)
+    ensure_meeting_index(conn, encoder, "m_20260911")
+    result = retrieve(
+        conn,
+        "活动弹窗的问题",
+        encoder=encoder,
+        date_from=__import__("datetime").date(2026, 9, 10),
+    )
+    assert result.refused is False
+    assert {hit.segment.meeting_id for hit in result.hits} == {"m_20260911"}
+
+
+def test_vector_failure_degrades_to_keyword(conn) -> None:
+    """向量这一路坏掉不该让整个检索失败，降级到关键词并说明原因。"""
+
+    class BrokenEncoder:
+        name = "broken"
+        dim = 2
+
+        def encode(self, texts, *, batch_size: int = 16):
+            raise RuntimeError("模型权重坏了")
+
+    result = retrieve(conn, "谁提到了活动弹窗的问题？", encoder=BrokenEncoder())
+    assert result.refused is False, "关键词这一路仍然能答"
+    assert result.encoder is None
+    assert result.keyword_hits > 0

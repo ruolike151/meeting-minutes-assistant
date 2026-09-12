@@ -10,18 +10,36 @@ import sqlite3
 
 from app.config import Settings
 from app.domain.models import Meeting, Minutes, Participant, Segment
+from app.retrieval.encoder import EncoderUnavailable, select_encoder
+from app.retrieval.index import ensure_library_index
 from app.retrieval.tokenize import register_words
 from app.store.db import open_db
 from app.store.repos import MeetingRepo
 from app.store.seeds import MEETINGS, SPEAKERS
 
 
-def bootstrap(settings: Settings) -> sqlite3.Connection:
-    """开库并保证样例数据就绪，返回可用的连接。"""
+def bootstrap(settings: Settings, *, index_vectors: bool = True) -> sqlite3.Connection:
+    """开库并保证样例数据就绪，返回可用的连接。
+
+    M3 起多一步：给还没建向量的片段补上向量（幂等，第二次是空操作）。
+    索引失败只记一笔告警、不影响启动——向量是查得更好的手段，
+    不该成为"能不能启动"的前提（约束 C3）。
+    """
     conn = open_db(settings)
     if settings.seed_on_start:
         seed_sample_data(conn)
+    if index_vectors:
+        backfill_vectors(settings, conn)
     return conn
+
+
+def backfill_vectors(settings: Settings, conn: sqlite3.Connection) -> tuple[int, str]:
+    """给整个库补齐片段向量，返回 (新写入条数, 说明)。"""
+    try:
+        encoder = select_encoder(settings).encoder
+    except EncoderUnavailable as error:
+        return 0, "编码器不可用，跳过向量回填：%s" % error
+    return ensure_library_index(conn, encoder)
 
 
 def seed_sample_data(conn: sqlite3.Connection) -> int:

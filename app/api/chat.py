@@ -49,6 +49,7 @@ def chat(
         payload.message,
         conversation_id=payload.conversation_id,
         active_meeting_id=payload.meeting_id,
+        settings=ctx.settings,
     )
     return ChatResponse(
         conversation_id=result.conversation_id,
@@ -66,6 +67,7 @@ def _streaming_response(settings: Settings, payload: ChatRequest) -> StreamingRe
                 payload.message,
                 conversation_id=payload.conversation_id,
                 active_meeting_id=payload.meeting_id,
+                settings=settings,
             ):
                 if event == "done":
                     result: ChatResult = data  # type: ignore[assignment]

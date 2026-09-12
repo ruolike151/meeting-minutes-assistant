@@ -82,6 +82,24 @@ class ConversationRepo:
                 conversations.append(conversation)
         return conversations
 
+    # -- 多轮上下文摘要（M3）---------------------------------------------
+
+    def summary(self, conversation_id: str) -> str | None:
+        """更早轮次的摘要；没压缩过就是 None。"""
+        row = self.conn.execute(
+            "SELECT summary FROM conversations WHERE id = ?", (conversation_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return row["summary"]
+
+    def set_summary(self, conversation_id: str, summary: str) -> None:
+        self.conn.execute(
+            "UPDATE conversations SET summary = ? WHERE id = ?",
+            (summary, conversation_id),
+        )
+        self.conn.commit()
+
 
 def row_to_message(row: sqlite3.Row) -> Message:
     answer = Answer.model_validate(json.loads(row["answer"])) if row["answer"] else None

@@ -1,12 +1,17 @@
 """SQLite 连接、建表与迁移。
 
-迁移用 `PRAGMA user_version` 做版本号，逐条叠加。M1 只有一个版本，
-但接口先按「可叠加」的方式写，后续加表不必手工改库。
+迁移用 `PRAGMA user_version` 做版本号，逐条叠加：
+v1 骨架（M1）、v2 声纹与任务（M2）、v3 片段向量与对话 trace（M3）。
+
+每一项要么是一段 SQL（`executescript`），要么是一个函数——因为 v3 里的
+`ALTER TABLE conversations ADD COLUMN summary` 需要先判断列是否存在，
+SQLite 没有 `ADD COLUMN IF NOT EXISTS`。
 """
 
 from __future__ import annotations
 
 import sqlite3
+from typing import Callable
 from pathlib import Path
 
 from app.config import Settings
@@ -147,7 +152,66 @@ CREATE TABLE IF NOT EXISTS tasks(
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 """
-MIGRATIONS: list[tuple[int, str]] = [(1, SCHEMA_V1), (2, SCHEMA_V2)]
+
+SCHEMA_V3 = """
+-- 片段向量：与 segments 分表存。segments_fts 是 content='segments' 的外部内容表，
+-- 对内容表做列变更会牵扯索引重建；独立一张表既不碰 FTS，也能让同一片段
+-- 在不同编码器下的向量并存（换模型后旧向量不参与召回）。
+CREATE TABLE IF NOT EXISTS segment_embeddings(
+    meeting_id TEXT NOT NULL,
+    segment_id TEXT NOT NULL,
+    encoder    TEXT NOT NULL,
+    dim        INTEGER NOT NULL,
+    vector     BLOB NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(meeting_id, segment_id, encoder)
+);
+
+-- 每轮回答的 trace：节点耗时、模型、token、费用。
+-- 它同时是调试依据、成本看板与 M5 评测的数据源（Langfuse 留 M5，决策 ⑨）。
+CREATE TABLE IF NOT EXISTS chat_traces(
+    id              TEXT PRIMARY KEY,
+    conversation_id TEXT,
+    intent          TEXT NOT NULL,
+    answer_mode     TEXT NOT NULL,
+    route_source    TEXT,
+    nodes           TEXT NOT NULL,
+    model           TEXT,
+    input_tokens    INTEGER NOT NULL DEFAULT 0,
+    output_tokens   INTEGER NOT NULL DEFAULT 0,
+    cost            REAL NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_embeddings_meeting ON segment_embeddings(meeting_id);
+CREATE INDEX IF NOT EXISTS idx_traces_conversation ON chat_traces(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_traces_created ON chat_traces(created_at);
+"""
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
+    """幂等加列：SQLite 不支持 `ADD COLUMN IF NOT EXISTS`，只能先问 PRAGMA。"""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(%s)" % table)}
+    if column not in existing:
+        conn.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, column, ddl))
+
+
+def _migrate_v3(conn: sqlite3.Connection) -> None:
+    conn.executescript(SCHEMA_V3)
+    # 会话摘要：多轮上下文压缩的落点（M3 第 5.7 节）
+    _ensure_column(conn, "conversations", "summary", "TEXT")
+    # 任务的降级说明：模型不可用、纪要某段抽取失败都记在这里（不是失败）
+    _ensure_column(conn, "tasks", "notes", "TEXT")
+
+
+# 一个迁移项要么是 SQL 脚本，要么是函数（需要条件判断时用函数）
+MigrationStep = str | Callable[[sqlite3.Connection], None]
+
+MIGRATIONS: list[tuple[int, MigrationStep]] = [
+    (1, SCHEMA_V1),
+    (2, SCHEMA_V2),
+    (3, _migrate_v3),
+]
 
 
 def connect(db_path: str | Path) -> sqlite3.Connection:
@@ -177,9 +241,12 @@ def schema_version(conn: sqlite3.Connection) -> int:
 def migrate(conn: sqlite3.Connection) -> int:
     """按序补齐迁移，返回最终版本号。重复调用是幂等的。"""
     current = schema_version(conn)
-    for version, script in MIGRATIONS:
+    for version, step in MIGRATIONS:
         if version > current:
-            conn.executescript(script)
+            if callable(step):
+                step(conn)
+            else:
+                conn.executescript(step)
             conn.execute("PRAGMA user_version = %d" % version)
             current = version
     conn.commit()

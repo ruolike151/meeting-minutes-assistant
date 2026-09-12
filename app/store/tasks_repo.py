@@ -40,6 +40,7 @@ def _to_task(row: sqlite3.Row) -> TaskState:
         stage_index=int(row["stage_index"] or 0),
         meeting_id=row["meeting_id"],
         error=row["error"],
+        notes=row["notes"] if "notes" in row.keys() else None,
     )
 
 
@@ -114,6 +115,25 @@ class TaskRepo:
         self.conn.execute(
             "UPDATE tasks SET status = 'failed', error = ?, updated_at = ? WHERE id = ?",
             (message, iso(utcnow()), task_id),
+        )
+        self.conn.commit()
+
+    def append_note(self, task_id: str, note: str) -> None:
+        """追加一条"降级说明"（例如模型不可用、某段纪要抽取失败）。
+
+        与 `error` 分开：任务依然是成功的，只是有环节降级了。
+        这条信息对排查"为什么这次纪要比较空"很关键。
+        """
+        if not note:
+            return
+        row = self.conn.execute("SELECT notes FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if row is None:
+            return
+        existing = (row["notes"] or "").strip()
+        merged = "%s | %s" % (existing, note) if existing else note
+        self.conn.execute(
+            "UPDATE tasks SET notes = ?, updated_at = ? WHERE id = ?",
+            (merged, iso(utcnow()), task_id),
         )
         self.conn.commit()
 

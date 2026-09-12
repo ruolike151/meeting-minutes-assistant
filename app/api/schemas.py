@@ -126,3 +126,4 @@ class TaskStatus(BaseModel):
     progress: float = 0
     meeting_id: str | None = None
     error: str | None = None
+    notes: str | None = None

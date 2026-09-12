@@ -1,0 +1,14 @@
+# 会议纪要助手 · M3 本地文本向量（可选依赖）
+#
+# 为什么不放进 requirements.txt：文本向量有三档实现（本地 BGE / 云端 embedding API /
+# 纯标准库哈希兜底），默认 auto 在没有本文件依赖时会自动落到哈希兜底，
+# 因此「没装这个大依赖」不会让任何测试变红（约束 C3）。
+#
+# 安装（torch 已由 requirements-perception.txt 提供，这里不会重复下载 2.5GB）：
+#   meeting_assistant\Scripts\python.exe -m pip install -r requirements-embedding.txt
+#
+# 权重下载（走 hf-mirror.com，约 95MB，落在 model/，不入库）：
+#   meeting_assistant\Scripts\python.exe scripts\download_models.py --embedding-only
+
+sentence-transformers==6.0.1
+transformers==5.17.0

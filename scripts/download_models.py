@@ -1,8 +1,9 @@
 #!/usr/bin/env python
-"""把 M2 需要的模型权重下载到 `model/` 目录（不依赖参考项目的任何路径）。
+"""把 M2 / M3 需要的模型权重下载到 `model/` 目录（不依赖参考项目的任何路径）。
 
     转写：Systran/faster-whisper-small、Systran/faster-whisper-medium
     声纹：speechbrain/spkrec-ecapa-voxceleb
+    向量：BAAI/bge-small-zh-v1.5（M3 语义召回，约 95MB）
 
 huggingface.co 在部分网络下不可达，脚本默认走 hf-mirror.com 镜像，
 可用环境变量 HF_ENDPOINT 覆盖。已存在的目录默认跳过，加 --force 重新下载。
@@ -11,6 +12,7 @@ huggingface.co 在部分网络下不可达，脚本默认走 hf-mirror.com 镜�
 
     .\meeting_assistant\Scripts\python.exe scripts\download_models.py
     .\meeting_assistant\Scripts\python.exe scripts\download_models.py --sizes small
+    .\meeting_assistant\Scripts\python.exe scripts\download_models.py --embedding-only
 """
 
 from __future__ import annotations
@@ -32,6 +34,8 @@ TRANSCRIPTION_REPOS = {
 }
 SPEAKER_REPO = "speechbrain/spkrec-ecapa-voxceleb"
 SPEAKER_DIRNAME = "speechbrain-spkrec-ecapa-voxceleb"
+EMBEDDING_REPO = "BAAI/bge-small-zh-v1.5"
+EMBEDDING_DIRNAME = "bge-small-zh-v1.5"
 
 
 def parse_args() -> argparse.Namespace:
@@ -45,6 +49,12 @@ def parse_args() -> argparse.Namespace:
         help="要下载的转写模型规格",
     )
     parser.add_argument("--skip-speaker", action="store_true", help="跳过声纹模型")
+    parser.add_argument("--skip-embedding", action="store_true", help="跳过文本向量模型")
+    parser.add_argument(
+        "--embedding-only",
+        action="store_true",
+        help="只下载文本向量模型（M3 语义召回）",
+    )
     parser.add_argument("--force", action="store_true", help="已存在也重新下载")
     return parser.parse_args()
 
@@ -90,15 +100,23 @@ def main() -> int:
     model_dir.mkdir(parents=True, exist_ok=True)
     print("镜像：%s" % os.environ["HF_ENDPOINT"])
 
-    for size in args.sizes:
+    for size in ([] if args.embedding_only else args.sizes):
         download(
             TRANSCRIPTION_REPOS[size],
             model_dir / ("faster-whisper-%s" % size),
             force=args.force,
         )
 
-    if not args.skip_speaker:
+    if not args.skip_speaker and not args.embedding_only:
         download(SPEAKER_REPO, model_dir / SPEAKER_DIRNAME, force=args.force)
+
+    if not args.skip_embedding:
+        download(
+            EMBEDDING_REPO,
+            model_dir / EMBEDDING_DIRNAME,
+            force=args.force,
+            required=("model.safetensors",),
+        )
 
     print("完成。模型目录：%s" % model_dir)
     return 0

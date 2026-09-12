@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.api.deps import get_context
 from app.api.review import build_review_items
 from app.api.schemas import ActionItemPatch, MeetingDetail
+from app.agent.minutes import generate_meeting_minutes
 from app.store.minutes_repo import MinutesRepo
 from app.store.repos import MeetingRepo, SegmentRepo
 from app.tools.meetings import (
@@ -80,6 +81,44 @@ def get_minutes(meeting_id: str, ctx: ToolContext = Depends(get_context)) -> Min
     if not result.found or result.minutes is None:
         raise HTTPException(status_code=404, detail="纪要不存在")
     return result.minutes
+
+
+@router.post("/meetings/{meeting_id}/minutes/regenerate", response_model=MinutesDetail)
+def regenerate_minutes(
+    meeting_id: str, ctx: ToolContext = Depends(get_context)
+) -> MinutesDetail:
+    """重新生成纪要（M3 T6）。
+
+    为什么需要这个入口：纪要生成属于编排层，音频任务只在处理完成时跑一次；
+    但换了模型、改了提示词、或者想现场演示"同一场会生成两次"时，
+    没有这个接口就只能重新上传一遍音频。人工修改存在 override 表里，
+    重新生成不会覆盖它们（《技术方案》6.2）。
+    """
+    meeting = MeetingRepo(ctx.conn).get(meeting_id)
+    if meeting is None:
+        raise HTTPException(status_code=404, detail="会议不存在")
+    segments = SegmentRepo(ctx.conn).list_for_meeting(meeting_id)
+    if not segments:
+        raise HTTPException(status_code=409, detail="这场会议还没有转写片段")
+    if ctx.settings is None:
+        raise HTTPException(status_code=500, detail="缺少运行配置")
+
+    minutes, _notes = generate_meeting_minutes(
+        ctx.settings, ctx.conn, meeting, segments, fallback=MinutesRepo(ctx.conn).get(meeting_id)
+    )
+    MinutesRepo(ctx.conn).save(minutes)
+    saved = MinutesRepo(ctx.conn).get_with_overrides(meeting_id)
+    payload = saved or minutes
+    return MinutesDetail(
+        meeting_id=meeting.id,
+        title=meeting.title,
+        date=meeting.date,
+        summary=payload.summary,
+        decisions=payload.decisions,
+        action_items=payload.action_items,
+        open_questions=payload.open_questions,
+        risks=payload.risks,
+    )
 
 
 @router.patch("/action-items/{item_id}", response_model=UpdateActionItemOutput)

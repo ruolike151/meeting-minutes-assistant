@@ -6,6 +6,8 @@
 
 产品目标与范围见 [`docs/产品设计文档.md`](docs/产品设计文档.md)，
 分层结构、选型理由与接口约定见 [`docs/技术方案.md`](docs/技术方案.md)，
+里程碑的落地计划见 [`docs/M2-感知阶段实施计划.md`](docs/M2-感知阶段实施计划.md)（已完成）与
+[`docs/M3-编排与检索阶段实施计划.md`](docs/M3-编排与检索阶段实施计划.md)（待评审），
 界面基线是 [`prototype/`](prototype/) 里的可交互原型。
 
 ---
@@ -64,7 +66,61 @@ M1 的规则路由与关键词检索是**可替换的临时实现**，
 
 ---
 
+## M3 交付了什么（编排与检索）
+
+按《技术方案》17 节，M3 的目标是「LangGraph 状态图 + 自研混合检索 + 带引用的问答」。
+详细计划见 [`docs/M3-编排与检索阶段实施计划.md`](docs/M3-编排与检索阶段实施计划.md)，
+实测数字见 [`docs/M3-编排与检索评测报告.md`](docs/M3-编排与检索评测报告.md)。
+
+| 交付项 | 落地位置 | 说明 |
+| --- | --- | --- |
+| LangGraph 状态图 | `app/agent/graph.py` | **全项目唯一 import langgraph 的地方**；节点是纯函数，框架出问题炸不到业务逻辑 |
+| 编排节点 | `app/agent/nodes/` | route / resolve_scope / clarify / create_task / retrieve / grade / refuse / synthesize / verify_evidence / finalize |
+| 模型路由 + 规则兜底 | `app/agent/nodes/routing_nodes.py` | 模型结论要过三道护栏（会议真实存在、发言人有效、intent 合法），否则回落 M1 的规则表 |
+| 混合检索 | `app/retrieval/{encoder,vector,fusion,timefilter}.py` | 过滤下推 → BM25 + 向量 → RRF 融合 → 双闸拒答 → 相邻片段组装 |
+| 文本向量三档 | `app/retrieval/encoder.py` | 本地 BGE（默认）/ 云端 embedding API（显式启用）/ 纯标准库哈希兜底（保证无权重也能跑） |
+| LLM 适配 | `app/llm/{openai_compat,cache,structured,factory}.py` | OpenAI 兼容协议 + 缓存记账 + 结构化输出四级降级 |
+| 纪要生成 | `app/agent/minutes.py` | map-reduce + schema 校验重试 + 单条降级待确认；替换 M2 的占位纪要 |
+| 多轮上下文 | `app/agent/history.py` | 最近 3 轮原文 + 更早轮次摘要；**范围跨轮继承**（"那这场会……"不用重新指定） |
+| 成本可观测 | `app/store/traces_repo.py`、`chat_traces` 表 | 每轮回答记录节点耗时、模型、token、费用 |
+| 参数评测 | `app/retrieval/evaluate.py`、`scripts/eval_retrieval.py` | 22 条标注集上的 Recall@k / MRR / 拒答正确率 + 扫参 |
+| 测试 | `tests/` | **289 项，全部无需网络、无需模型、无需 GPU、无需 API Key** |
+
+**实测（3 场样例会议 / 32 条片段 / 22 条标注查询 / k=8）**：
+
+| 编码器 | Recall@8 | MRR | 拒答正确率（域外） |
+| --- | ---: | ---: | ---: |
+| `keyword-only`（M1 基线） | 1.000 | 0.857 | 1.000 |
+| `hash-bigram-v1#256`（兜底） | 1.000 | 0.809 | 1.000 |
+| `bge-small-zh-v1.5#512` | 1.000 | **0.881** | 1.000 |
+
+两条如实说明：召回在这份小标注集上已经饱和，语义检索的收益主要落在排序（MRR +2.8%）；
+向量余弦阈值由 0.35 扫到 **0.50**（拒答正确率 0.25 → 1.00），依据见评测报告第 3 节。
+
+**M3 刻意不做**：checkpointer 持久化与 `interrupt` 挂起恢复（M4）、证据回跳与
+待确认区的完整交互（M4）、Langfuse 看板与扩展标注集（M5）、重排（决策 ③ 留 M5）。
+
+---
+
 ## 快速开始
+
+### 0. 配置 `.env`（可选，不配也能跑）
+
+```powershell
+Copy-Item .env.example .env      # 然后把 MA_LLM_API_KEY 填上你自己的 Key
+```
+
+`.env` 已被 `.gitignore` 排除，Key 不会入库；**不填 Key 也能跑通全部功能和测试**——
+`MA_LLM_MODE=auto` 在没有 Key 时等价于 `off`，链路自动落到
+「规则路由 + 混合检索 + 模板装配」，行为与 M1 等价但已经走图。
+
+换 LLM 供应商只改这一处（provider 是协议名，不是厂商名）：
+
+```ini
+MA_LLM_PROVIDER=openai
+MA_LLM_BASE_URL=https://api.deepseek.com/v1   # 换成任意 OpenAI 兼容端点
+MA_LLM_MODEL_ANSWER=deepseek-chat
+```
 
 虚拟环境按要求建在项目根目录下：`meeting_assistant/`（已加入 `.gitignore`，不入库）。
 新克隆的仓库里没有这个目录，先建一次即可（Python 3.12）：
@@ -125,6 +181,53 @@ $env:MA_PERCEPTION_BACKEND = "local"
 
 ---
 
+### 语义检索（可选，用本地 BGE）
+
+```powershell
+# 1. 安装向量依赖（torch 已由感知层依赖提供，不会重复下载）
+.\meeting_assistant\Scripts\python.exe -m pip install -r requirements-embedding.txt
+
+# 2. 下载中文向量权重到 model/（约 95MB，走 hf-mirror.com）
+.\meeting_assistant\Scripts\python.exe scripts\download_models.py --embedding-only
+```
+
+`MA_TEXT_ENCODER` 三档：
+
+| 取值 | 行为 |
+| --- | --- |
+| `auto`（默认） | 有权重用本地 BGE，没有则落到哈希兜底，并把回落原因写进 trace |
+| `bge` | 强制本地 BGE；权重缺失直接报错（适合演示前确认） |
+| `hash` | 纯标准库兜底：确定性、零依赖，只捕捉字面重合 |
+| `api` | 云端 embedding（OpenAI 兼容 `/embeddings`，**必须显式指定**，因为要走网络与计费） |
+
+评测与扫参：
+
+```powershell
+.\meeting_assistant\Scripts\python.exe scripts\eval_retrieval.py --encoder keyword
+.\meeting_assistant\Scripts\python.exe scripts\eval_retrieval.py --encoder bge
+.\meeting_assistant\Scripts\python.exe scripts\eval_retrieval.py --encoder bge --sweep
+```
+
+---
+
+### 用真实 LLM 跑一遍（需要 Key）
+
+```powershell
+$env:MA_RUN_LLM_SMOKE = "1"        # 没有这个开关，脚本不会发任何请求
+.\meeting_assistant\Scripts\python.exe scripts\eval_llm_smoke.py
+
+# 演示前预热缓存：之后可以用 MA_LLM_MODE=cache_first 断网演示
+.\meeting_assistant\Scripts\python.exe scripts\warm_cache.py
+```
+
+单场会议重新生成纪要（换了模型或改了提示词时不用重新上传音频）：
+
+```powershell
+curl -X POST http://127.0.0.1:8000/api/meetings/m_20260911/minutes/regenerate
+```
+
+---
+
 ## 运行测试
 
 ```powershell
@@ -146,20 +249,24 @@ CI 不出现任何真实网络调用：模型出口由 `FakeLLMClient` 堵死，
 ```text
 app/
   main.py            FastAPI 入口：挂载路由与静态前端
-  config.py          运行目录与检索层参数（全部可用环境变量覆盖）
+  config.py          运行目录 / 检索参数 / LLM 与向量配置（环境变量或 .env 覆盖）
   api/               HTTP 层：路由 + DTO + 依赖注入
-  agent/             编排层：routing（意图/范围）、answers（装配）、pipeline（链路）
+  agent/             编排层：graph（LangGraph 装配）、nodes（纯函数节点）、
+                     minutes（LLM 纪要生成）、history（多轮上下文）、pipeline（门面）
   tools/             工具层：Pydantic 契约 + JSON Schema 导出
-  retrieval/         检索层：tokenize / keyword（FTS5+BM25）/ pipeline
-  perception/        感知层：M1 只有 offline.py 固定数据后端
-  llm/               LLM 适配协议与 FakeLLMClient
-  store/             SQLite 建表迁移、仓储、种子数据、任务表
+  retrieval/         检索层：tokenize / keyword(FTS5+BM25) / encoder / vector / fusion /
+                     timefilter / pipeline / evaluate（评测指标）
+  perception/         感知层：offline（默认）/ local（faster-whisper + ECAPA）
+  llm/               LLM 适配：openai_compat / cache（缓存+记账）/ structured / factory / fake
+  store/             SQLite 建表迁移、仓储（含片段向量、对话 trace）、种子数据、任务表
   domain/            领域模型（Pydantic）
 web/                 无构建前端：index.html / styles.css / app.js + 4 个 ES 模块
-scripts/             运维与评测脚本：下模型 / 注册声纹 / 冒烟 / 评测
+scripts/             运维与评测脚本：下模型（含 BGE）/ 注册声纹 / 感知冒烟 / 检索评测 /
+                     LLM 冒烟 / 缓存预热
 samples/             样例素材：2 场会议 + 4 段注册音频 + 人工标注（M2 评测基准）
 model/               模型权重目录（不入库，由 scripts/download_models.py 生成）
-tests/               领域 / 存储 / 检索 / 路由 / 编排 / 工具 / API / 端到端 / 前端契约 / 文档一致性
+tests/               领域 / 存储 / 检索 / 编码器 / 融合 / 节点 / 图 / LLM / 结构化输出 /
+                     纪要 / 多轮 / 评测 / 工具 / API / 端到端 / 前端契约 / 文档一致性
 prototype/           交互原型（界面基线，见其 README）
 docs/                产品设计文档与技术方案
 ```
@@ -214,6 +321,6 @@ M1 的口径：命中片段覆盖率 < 0.34 即拒答。
 | 阶段 | 要做的事 | 落在哪 |
 | --- | --- | --- |
 | M2 感知 ✅ | 接入真实转写与声纹，`offline.py` 降级为测试后端；实测窗口级准确率 93.75%、宏平均召回 92.86%、RTF 0.09（GPU）/ 0.48（CPU） | `app/perception/`、`scripts/` |
-| M3 编排与检索 | LangGraph 状态图（路由/澄清/拒答/重试）、向量召回 + RRF + 重排、LLM 合成 | `app/agent/`、`app/retrieval/` |
+| M3 编排与检索 ✅ | LangGraph 状态图（路由/澄清/拒答/重试）、向量召回 + RRF + 双闸拒答、LLM 合成与纪要生成；实测 Recall@8 1.000 / MRR 0.881 / 拒答正确率 1.000 → 计划见 [`docs/M3-编排与检索阶段实施计划.md`](docs/M3-编排与检索阶段实施计划.md)，数字见 [`docs/M3-编排与检索评测报告.md`](docs/M3-编排与检索评测报告.md) | `app/agent/`、`app/retrieval/` |
 | M4 协同 | checkpointer + interrupt 支撑待确认区挂起恢复、证据回跳、override 完整交互 | `app/agent/`、`web/` |
 | M5 评测 | 标注集、Recall@k / 拒答正确率 / 成本指标、Langfuse 报告 | `tests/`、`docs/` |

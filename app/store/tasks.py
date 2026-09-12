@@ -25,6 +25,7 @@ class TaskState:
     stage_index: int = 0
     meeting_id: str | None = None
     error: str | None = None
+    notes: str | None = None    # M3：纪要生成过程中的降级/告警说明（不是失败）
 
     @property
     def progress(self) -> float:

@@ -53,6 +53,7 @@ def to_status(task: TaskState) -> TaskStatus:
         progress=task.progress,
         meeting_id=task.meeting_id,
         error=task.error,
+        notes=task.notes,
     )
 
 

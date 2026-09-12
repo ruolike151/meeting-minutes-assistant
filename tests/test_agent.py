@@ -29,7 +29,20 @@ def test_respond_refuses_without_evidence(conn) -> None:
 def test_respond_tracks_observed_nodes(conn) -> None:
     result = respond(conn, "这三场会有什么风险？")
     names = [step.name for step in result.answer.trace]
-    assert names == ["route", "assemble", "verify_evidence", "persist"]
+    # M3 起链路被拆成图节点，每个节点各记一步耗时（可观测粒度更细）
+    assert names == ["route", "synthesize", "verify_evidence", "persist"]
+    assert set(names) <= {
+        "route",
+        "resolve_scope",
+        "clarify",
+        "create_task",
+        "retrieve",
+        "grade",
+        "refuse",
+        "synthesize",
+        "verify_evidence",
+        "persist",
+    }
     assert all(step.ms >= 0 for step in result.answer.trace)
 
 

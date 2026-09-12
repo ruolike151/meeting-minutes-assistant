@@ -24,6 +24,13 @@ os.environ.setdefault("MA_DATA_DIR", str(Path(tempfile.mkdtemp()) / "data"))
 # 离线后端是瞬时完成的，测试里不需要演示用的阶段间隔
 os.environ.setdefault("MA_STAGE_DELAY", "0")
 
+# M3：测试**永远不调用真实模型、不加载向量权重**。
+# 这里用硬赋值而不是 setdefault——本机的 .env 里 MA_LLM_MODE=live，
+# 一旦被读进来，测试就会去访问外部 API（约束 C3 的红线）。
+# 必须在导入 app.config 之前生效：.env 是在那个模块导入时载入的。
+os.environ["MA_LLM_MODE"] = "off"
+os.environ["MA_TEXT_ENCODER"] = "hash"
+
 from app.config import Settings  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.store.bootstrap import bootstrap  # noqa: E402

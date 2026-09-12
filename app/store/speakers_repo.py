@@ -15,29 +15,13 @@
 from __future__ import annotations
 
 import sqlite3
-import struct
 import uuid
 from dataclasses import dataclass
 from typing import Sequence
 
 from app.perception.voiceref import VoiceProfile, build_profile
 from app.store.repos import iso, utcnow
-
-
-def pack_vector(vector: Sequence[float]) -> bytes:
-    values = [float(value) for value in vector]
-    if not values:
-        raise ValueError("声纹向量不能为空")
-    return struct.pack("<%df" % len(values), *values)
-
-
-def unpack_vector(blob: bytes, dim: int) -> list[float]:
-    if dim <= 0:
-        raise ValueError("向量维度必须为正数")
-    expected = dim * 4
-    if len(blob) != expected:
-        raise ValueError("声纹向量长度不符：期望 %d 字节，实际 %d" % (expected, len(blob)))
-    return list(struct.unpack("<%df" % dim, blob))
+from app.store.vector_codec import pack_vector, unpack_vector  # noqa: F401 - 兼容旧导入路径
 
 
 def new_speaker_id(name: str) -> str:

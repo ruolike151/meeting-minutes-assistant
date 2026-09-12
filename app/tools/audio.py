@@ -22,6 +22,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import Settings
+from app.agent.minutes import generate_meeting_minutes
 from app.domain.models import Meeting, Minutes
 from app.perception.base import PerceptionBackend
 from app.perception.factory import get_backend, get_stages
@@ -67,14 +68,16 @@ def stage_delay() -> float:
 
 
 def placeholder_minutes(backend: PerceptionBackend, meeting_id: str) -> Minutes:
-    """M2 过渡期的纪要兜底。
+    """纪要兜底（M2 遗留，M3 起只在没有模型时使用）。
 
-    M2 的边界是「感知层只产出片段」，纪要生成属于编排层（M3 接 LLM）。
-    但 M1 的界面、导出与端到端测试都依赖 minutes 存在，因此：
+    M3 起正路径是 `generate_meeting_minutes`（LLM 生成），这里退居兜底：
 
     * 离线后端自带固定脚本的纪要（它的语料写死，占位内容就是标准答案）；
-    * 真实后端没有内容可给，这里返回结构合法但内容为空的纪要，
-      界面显示"纪要待生成"，由 M3 的 LLM 节点补上。
+    * 真实后端没有内容可给，返回结构合法但内容为空的纪要，
+      界面显示"纪要待生成"。
+
+    没有模型（默认的 `MA_LLM_MODE=auto` 且无 Key）时整条链路仍然可用，
+    这是约束 C3 在音频路径上的落点。
     """
     provided = backend.placeholder_minutes(meeting_id)
     return provided if provided is not None else Minutes(meeting_id=meeting_id)
@@ -147,12 +150,37 @@ def run_task(settings: Settings, task_id: str) -> None:
                 time_text=now.astimezone().strftime("%H:%M"),
                 progress=_progress_writer(repo, task_id, delay),
             )
-            MeetingRepo(conn).create(meeting, segments, placeholder_minutes(backend, meeting.id))
+            minutes, notes = generate_meeting_minutes(
+                settings,
+                conn,
+                meeting,
+                segments,
+                fallback=placeholder_minutes(backend, meeting.id),
+            )
+            if notes:
+                repo.append_note(task_id, "；".join(notes))
+            MeetingRepo(conn).create(meeting, segments, minutes)
+            _index_vectors(settings, conn, meeting.id)
             repo.mark_done(task_id, meeting.id, stage_index=len(task.stages))
         except Exception as error:  # noqa: BLE001 - 任务失败要落库，而不是抛给后台线程
             repo.mark_failed(task_id, "%s: %s" % (type(error).__name__, error))
     finally:
         conn.close()
+
+
+def _index_vectors(settings: Settings, conn: sqlite3.Connection, meeting_id: str) -> None:
+    """给新会议建向量索引（失败不影响任务结果，只是检索退化到关键词）。"""
+    from app.retrieval.encoder import EncoderUnavailable, select_encoder
+    from app.retrieval.index import ensure_meeting_index
+
+    try:
+        encoder = select_encoder(settings).encoder
+    except EncoderUnavailable:
+        return
+    try:
+        ensure_meeting_index(conn, encoder, meeting_id)
+    except Exception:  # noqa: BLE001 - 索引是增强，不该让任务失败
+        return
 
 
 def _progress_writer(repo: TaskRepo, task_id: str, delay: float):
