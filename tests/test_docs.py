@@ -28,6 +28,8 @@ M5_PLAN = ROOT / 'docs' / 'M5-评测阶段实施计划.md'
 M4_REPORT = ROOT / 'docs' / 'M4-协同阶段验收报告.md'
 M5_REPORT = ROOT / 'docs' / 'M5-评测报告.md'
 M5_DASHBOARD = ROOT / 'docs' / 'M5-可观测看板.md'
+TUTORIAL = ROOT / 'docs' / '操作教程.md'
+MVP_REPORT = ROOT / 'docs' / 'MVP技术报告.md'
 PROTO_README = ROOT / 'prototype' / 'README.md'
 
 PRODUCT_SECTIONS = [
@@ -200,6 +202,24 @@ M5_ENV_KEYS = [
     'MA_JUDGE_MODE',
     'MA_LANGFUSE_ENABLED',
     'MA_LANGFUSE_HOST',
+]
+
+# 面向使用者与面试官的两份入口文档：缺章节就等于没写
+TUTORIAL_SECTIONS = [
+    '## 路线 A：零配置启动（3 分钟）',
+    '## 路线 B：跑真实转写与声纹',
+    '## 路线 C：跑测试与评测',
+    '## 路线 D：可观测（Langfuse，可选）',
+    '## 面试现场 5 分钟演示脚本',
+    '## 常见问题排查',
+]
+
+MVP_REPORT_SECTIONS = [
+    '## 1. 一分钟版本',
+    '## 2. 15 分钟版本：按这个顺序讲',
+    '## 3. 高频追问与回答要点',
+    '## 4. 演示与验证的"防翻车"清单',
+    '## 5. MVP 边界：做完了什么、明确不做什么',
 ]
 
 # M4 验收报告必须覆盖的章节（与 M3 报告同款约束：报告要有口径、结论与偏差）
@@ -517,6 +537,24 @@ def run() -> list[str]:
     check('M5 报告标注语料来源与规模',
           '真实录音' in m5_report and '5 场' in m5_report)
     check('M5 报告给出重排结论', '重排结论' in m5_report)
+
+    print('[17] 操作教程与面试版技术报告')
+    if not TUTORIAL.is_file() or not MVP_REPORT.is_file():
+        check('操作教程存在', TUTORIAL.is_file(), str(TUTORIAL))
+        check('MVP 技术报告存在', MVP_REPORT.is_file(), str(MVP_REPORT))
+        return list(FAILURES)
+    tutorial = read(TUTORIAL)
+    mvp_report = read(MVP_REPORT)
+    for heading in TUTORIAL_SECTIONS:
+        check('操作教程含章节 ' + heading, heading in tutorial)
+    for heading in MVP_REPORT_SECTIONS:
+        check('MVP 报告含章节 ' + heading, heading in mvp_report)
+    check('README 链接操作教程', '操作教程.md' in readme_root)
+    check('README 链接 MVP 技术报告', 'MVP技术报告.md' in readme_root)
+    check('教程给出启动命令', 'uvicorn app.main:app' in tutorial)
+    check('教程给出测试命令', 'pytest -q --basetemp=.pytest_tmp' in tutorial)
+    check('MVP 报告覆盖三条链路', '链路 A' in mvp_report and '链路 C' in mvp_report)
+    check('MVP 报告列出已知短板', '已知短板' in mvp_report)
 
     return list(FAILURES)
 
