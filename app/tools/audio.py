@@ -22,7 +22,10 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import Settings
+from app.agent.checkpoint import checkpoint_config, open_checkpointer
+from app.agent.graph import build_minutes_graph
 from app.agent.minutes import generate_meeting_minutes
+from app.agent.nodes import NodeContext
 from app.domain.models import Meeting, Minutes
 from app.perception.base import PerceptionBackend
 from app.perception.factory import get_backend, get_stages
@@ -150,17 +153,11 @@ def run_task(settings: Settings, task_id: str) -> None:
                 time_text=now.astimezone().strftime("%H:%M"),
                 progress=_progress_writer(repo, task_id, delay),
             )
-            minutes, notes = generate_meeting_minutes(
-                settings,
-                conn,
-                meeting,
-                segments,
-                fallback=placeholder_minutes(backend, meeting.id),
-            )
+            # M4：纪要生成走 minutes 图（生成 → 校验 → 人工闸门 → 收尾）。
+            # 有待确认条目时图在这里挂起，worker 线程随即正常结束，不等待人工。
+            notes = _run_minutes_graph(settings, conn, meeting, segments, backend)
             if notes:
                 repo.append_note(task_id, "；".join(notes))
-            MeetingRepo(conn).create(meeting, segments, minutes)
-            _index_vectors(settings, conn, meeting.id)
             repo.mark_done(task_id, meeting.id, stage_index=len(task.stages))
         except Exception as error:  # noqa: BLE001 - 任务失败要落库，而不是抛给后台线程
             repo.mark_failed(task_id, "%s: %s" % (type(error).__name__, error))
@@ -168,19 +165,34 @@ def run_task(settings: Settings, task_id: str) -> None:
         conn.close()
 
 
-def _index_vectors(settings: Settings, conn: sqlite3.Connection, meeting_id: str) -> None:
-    """给新会议建向量索引（失败不影响任务结果，只是检索退化到关键词）。"""
-    from app.retrieval.encoder import EncoderUnavailable, select_encoder
-    from app.retrieval.index import ensure_meeting_index
+def _run_minutes_graph(
+    settings: Settings,
+    conn: sqlite3.Connection,
+    meeting: Meeting,
+    segments: list,
+    backend: PerceptionBackend,
+) -> list[str]:
+    """跑 minutes 图并返回需要记进任务备注的说明（降级信息 + 待确认提示）。
 
-    try:
-        encoder = select_encoder(settings).encoder
-    except EncoderUnavailable:
-        return
-    try:
-        ensure_meeting_index(conn, encoder, meeting_id)
-    except Exception:  # noqa: BLE001 - 索引是增强，不该让任务失败
-        return
+    图可能在 `review_gate` 挂起：`invoke` 会正常返回（挂起不是异常），
+    线程在这里结束，恢复由确认接口在后续请求里完成。
+    """
+    context = NodeContext.from_settings(conn, settings)
+    graph = build_minutes_graph(context, checkpointer=open_checkpointer(settings))
+    state = {
+        "meeting_id": meeting.id,
+        "meeting": meeting,
+        "segments": list(segments),
+        "minutes": placeholder_minutes(backend, meeting.id),
+        "notes": [],
+        "retry_count": 0,
+    }
+    result = graph.invoke(state, checkpoint_config(meeting.id))
+    notes = list(result.get("notes") or [])
+    pending = int(result.get("pending_count") or 0)
+    if pending:
+        notes.append("纪要含 %d 条待确认条目，请到待确认区处理" % pending)
+    return notes
 
 
 def _progress_writer(repo: TaskRepo, task_id: str, delay: float):

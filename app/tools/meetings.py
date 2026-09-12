@@ -18,7 +18,7 @@ from app.domain.models import (
     SummaryTopic,
     split_item_id,
 )
-from app.store.minutes_repo import MinutesRepo, OverrideRepo
+from app.store.minutes_repo import MinutesRepo, OverrideRepo, pending_items
 from app.store.repos import MeetingRepo
 
 
@@ -114,7 +114,9 @@ def build_summary(conn: sqlite3.Connection, meeting: Meeting) -> MeetingSummary:
         participants=meeting.participants,
         segment_count=_segment_count(conn, meeting.id),
         action_item_count=len(action_items),
-        review_count=sum(1 for item in action_items if item.needs_review),
+        # 待确认口径与 /api/review 共用同一个函数：待办 + 低置信度决议，
+        # 否则会出现"徽标显示 2 条、点进去只有 1 条"的口径漂移（M4 验收项 7）。
+        review_count=len(pending_items(conn, meeting.id)),
     )
 
 
@@ -179,5 +181,4 @@ def update_action_item(
         if item.id == item_id
     )
     return UpdateActionItemOutput(found=True, item=updated, message="已更新")
-
 

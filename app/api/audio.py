@@ -65,6 +65,15 @@ def load_task(settings: Settings, task_id: str) -> TaskState | None:
         conn.close()
 
 
+def _pending_items(conn, meeting_id: str | None) -> list:
+    """任务收尾时的待确认清单（口径与待确认区共用同一个函数）。"""
+    if not meeting_id:
+        return []
+    from app.store.minutes_repo import pending_items
+
+    return pending_items(conn, meeting_id)
+
+
 @router.post("/audio", response_model=AudioUploadResponse)
 async def upload_audio(
     file: UploadFile = File(...),
@@ -128,6 +137,22 @@ def task_events(
                     if current.status == "failed":
                         yield sse_event("error", {"message": current.error or "处理失败"})
                         return
+                    # M4：纪要生成完可能停在"等待人工确认"。
+                    # 这里把待确认条目推给前端，页面据此切到待确认区，
+                    # 而不是让用户自己猜为什么会议没标记成已完成。
+                    pending = _pending_items(conn, current.meeting_id)
+                    if pending:
+                        yield sse_event(
+                            "review",
+                            {
+                                "meeting_id": current.meeting_id,
+                                "count": len(pending),
+                                "items": [
+                                    {"id": item.id, "kind": item.kind, "reason": item.reason}
+                                    for item in pending
+                                ],
+                            },
+                        )
                     yield sse_event(
                         "result", {"meeting_id": current.meeting_id, "status": current.status}
                     )

@@ -322,5 +322,5 @@ M1 的口径：命中片段覆盖率 < 0.34 即拒答。
 | --- | --- | --- |
 | M2 感知 ✅ | 接入真实转写与声纹，`offline.py` 降级为测试后端；实测窗口级准确率 93.75%、宏平均召回 92.86%、RTF 0.09（GPU）/ 0.48（CPU） | `app/perception/`、`scripts/` |
 | M3 编排与检索 ✅ | LangGraph 状态图（路由/澄清/拒答/重试）、向量召回 + RRF + 双闸拒答、LLM 合成与纪要生成；实测 Recall@8 1.000 / MRR 0.881 / 拒答正确率 1.000 → 计划见 [`docs/M3-编排与检索阶段实施计划.md`](docs/M3-编排与检索阶段实施计划.md)，数字见 [`docs/M3-编排与检索评测报告.md`](docs/M3-编排与检索评测报告.md) | `app/agent/`、`app/retrieval/` |
-| M4 协同 | checkpointer + interrupt 支撑待确认区挂起恢复、证据回跳、override 完整交互 | `app/agent/`、`web/` |
-| M5 评测 | 标注集、Recall@k / 拒答正确率 / 成本指标、Langfuse 报告 | `tests/`、`docs/` |
+| M4 协同 ✅ | checkpointer + interrupt 支撑待确认区挂起恢复、证据回跳、override 完整交互 → 计划见 [`docs/M4-协同阶段实施计划.md`](docs/M4-协同阶段实施计划.md)，结果见 [`docs/M4-协同阶段验收报告.md`](docs/M4-协同阶段验收报告.md) | `app/agent/`、`web/` |
+| M5 评测 | 标注集、12 项指标、重排消融、Langfuse 报告 → 计划见 [`docs/M5-评测阶段实施计划.md`](docs/M5-评测阶段实施计划.md)（待评审，决策见该文档第 10 节） | `tests/`、`docs/` |

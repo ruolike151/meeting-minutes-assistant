@@ -32,6 +32,7 @@ from app.domain.models import (
     Meeting,
     Minutes,
     OpenQuestion,
+    REVIEW_CONFIDENCE_THRESHOLD,
     Risk,
     Segment,
     SummaryTopic,
@@ -189,6 +190,14 @@ def to_minutes(
                 # ID 在"保留下来"的条目上连续编号：跳过一条不会留下空号
                 id="d%d" % (len(decisions) + 1), content=item.content, evidence=evidence,
                 confidence=item.confidence,
+                # M4：低置信度决议与低置信度待办同口径——进待确认区，由人拍板
+                needs_review=item.confidence < REVIEW_CONFIDENCE_THRESHOLD,
+                review_reason=(
+                    "置信度 %.2f 低于阈值 %.2f"
+                    % (item.confidence, REVIEW_CONFIDENCE_THRESHOLD)
+                    if item.confidence < REVIEW_CONFIDENCE_THRESHOLD
+                    else None
+                ),
             )
         )
 

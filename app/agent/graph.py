@@ -30,6 +30,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import Command, interrupt
 
 from app.agent.nodes import (
     NodeContext,
@@ -44,7 +45,14 @@ from app.agent.nodes import (
     synthesize_node,
     verify_evidence_node,
 )
-from app.agent.state import AgentState
+from app.agent.nodes.minutes_nodes import (
+    finalize_minutes_node,
+    generate_minutes_node,
+    minutes_retry_decision,
+    review_gate_node,
+    validate_minutes_node,
+)
+from app.agent.state import AgentState, MinutesState
 
 # 阶段名 → 前端显示文案（SSE 的 stage 事件用它）
 NODE_LABELS: dict[str, str] = {
@@ -120,6 +128,59 @@ def build_graph(context: NodeContext, *, checkpointer: Any | None = None):
     return builder.compile(checkpointer=checkpointer)
 
 
+# minutes 图的阶段名（任务进度与前端提示用语）
+MINUTES_NODE_LABELS: dict[str, str] = {
+    "generate": "生成结构化纪要",
+    "validate": "校验纪要格式",
+    "review_gate": "等待人工确认",
+    "finalize": "确认完成，写入最终稿",
+}
+
+
+def build_minutes_graph(context: NodeContext, *, checkpointer: Any | None = None):
+    """装配 minutes 图（M4 T2）：生成 → 校验 → 人工闸门 → 收尾。
+
+    闸门用的 `interrupt` 通过 context 注入给节点，因此节点层仍然不 import 框架；
+    `Command(resume=…)` 由 `app/agent/review.py` 在确认请求里发起。
+    """
+    builder = StateGraph(MinutesState)
+    # 注入真实的挂起函数；测试可以直接预置一个假的，用来断言闸门行为而不真挂起
+    if context.interrupt_fn is None:
+        context.interrupt_fn = interrupt
+
+    def bind(node: Callable[[MinutesState, NodeContext], dict]) -> Callable[[MinutesState], dict]:
+        def run(state: MinutesState) -> dict:
+            return node(state, context)
+
+        run.__name__ = node.__name__
+        return run
+
+    builder.add_node("generate", bind(generate_minutes_node))
+    builder.add_node("validate", bind(validate_minutes_node))
+    builder.add_node("review_gate", bind(review_gate_node))
+    builder.add_node("finalize", bind(finalize_minutes_node))
+
+    builder.add_edge(START, "generate")
+    builder.add_edge("generate", "validate")
+    builder.add_conditional_edges(
+        "validate",
+        minutes_retry_decision,
+        {"generate": "generate", "review_gate": "review_gate"},
+    )
+    builder.add_edge("review_gate", "finalize")
+    builder.add_edge("finalize", END)
+    return builder.compile(checkpointer=checkpointer)
+
+
+def resume_input(value: dict) -> Command:
+    """构造"恢复挂起图"的输入（`Command(resume=…)`）。
+
+    放在这里是为了守住分层纪律：`app/agent/review.py` 需要恢复图，
+    但只有 graph.py 与 checkpoint.py 允许 import LangGraph。
+    """
+    return Command(resume=value)
+
+
 ROUTE_ROUTES = {
     "create_task": "create_task",
     "clarify": "clarify",
@@ -152,4 +213,11 @@ def _after_grade(state: AgentState) -> str:
     return "synthesize" if state.get("enough_evidence") else "refuse"
 
 
-__all__ = ["NODE_LABELS", "ROUTE_ROUTES", "STRUCTURED_MODES", "build_graph"]
+__all__ = [
+    "MINUTES_NODE_LABELS",
+    "NODE_LABELS",
+    "ROUTE_ROUTES",
+    "STRUCTURED_MODES",
+    "build_graph",
+    "build_minutes_graph",
+]

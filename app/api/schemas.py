@@ -45,19 +45,26 @@ class ChatResponse(BaseModel):
 
 
 class ReviewItem(BaseModel):
-    """待确认区条目：把 needs_review 的待办展开成前端可直接渲染的形状。"""
+    """待确认区条目：把待办与决议展开成前端可直接渲染的形状。
+
+    M4 起 `kind` 区分两类条目（决策 ②=A）：待办可改负责人 / 截止时间，
+    决议只能确认或忽略（它没有负责人与截止时间）。
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     id: str                      # 全局 ID：m_20260911:a1
     meeting_id: str
     meeting_title: str
-    task: str
+    kind: Literal["action_item", "decision"] = "action_item"
+    task: str                    # 待办的 task / 决议的正文，统一叫 task 便于前端复用
     owner: str | None = None
     owner_name: str
+    due: date | None = None
     due_text: str | None = None
     reason: str
     confidence: float
+    editable: bool = True
     citations: list[Citation] = Field(default_factory=list)
 
 
@@ -92,10 +99,16 @@ class ActionItemPatch(BaseModel):
 class ReviewResolveRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    decision: Literal["confirm", "dismiss"]
+    # `decision` 是 M1–M3 的字段名，保留兼容；`action` 支持 M4 新增的 edit
+    decision: Literal["confirm", "dismiss"] | None = None
+    action: Literal["confirm", "dismiss", "edit"] | None = None
     owner: str | None = Field(default=None, description="人工补录的负责人 speaker_id")
     due: str | None = Field(default=None, description="人工补录的截止日期 YYYY-MM-DD")
     note: str | None = None
+
+    def resolved_action(self) -> str:
+        """取本次动作；两个字段都没给时按 confirm 处理（M1 的默认行为）。"""
+        return self.action or self.decision or "confirm"
 
 
 class ReviewResolveResponse(BaseModel):
@@ -104,6 +117,9 @@ class ReviewResolveResponse(BaseModel):
     ok: bool = True
     item_id: str
     decision: str
+    meeting_id: str | None = None
+    remaining: int = 0
+    finalized: bool = False
     message: str = ""
 
 

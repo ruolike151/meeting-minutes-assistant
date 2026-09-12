@@ -27,7 +27,12 @@ SCHEMA_VERSION = 1
 # 置信度低于该阈值的待办必须进「待确认区」（产品文档 5.1 / 6.1）
 REVIEW_CONFIDENCE_THRESHOLD = 0.75
 
-MeetingStatus = Literal["pending", "processing", "processed", "failed"]
+# M4：`awaiting_review` 表示"纪要已生成、但有条目等人工确认"。
+# 它必须是一个独立状态而不是复用 processing：前端要用它显示徽标，
+# 会议列表要能按它筛选，评测要能统计人工介入率。
+MeetingStatus = Literal[
+    "pending", "processing", "awaiting_review", "processed", "failed"
+]
 ActionStatus = Literal["pending", "done", "cancelled"]
 OwnerSource = Literal["explicit", "inferred", "missing", "unknown", "confirmed"]
 
@@ -132,6 +137,11 @@ class Decision(BaseModel):
     content: str
     evidence: list[str] = Field(default_factory=list)
     confidence: float = Field(default=0.9, ge=0, le=1)
+    # M4：与 ActionItem 同口径的"待人工确认"标记。决议没有负责人与截止时间，
+    # 进待确认区的理由只有一条——置信度低，所以只需要这两个字段。
+    needs_review: bool = False
+    confirmed: bool = False
+    review_reason: str | None = None
 
 
 class ActionItem(BaseModel):

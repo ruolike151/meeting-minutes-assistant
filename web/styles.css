@@ -932,6 +932,26 @@ input, textarea { font: inherit; color: inherit; }
 .review-actions { display: flex; gap: var(--s-2); margin-top: var(--s-3); justify-content: flex-end; }
 .review-actions .btn { min-height: 34px; padding: 0 var(--s-3); font-size: 13px; }
 
+/* 人工确认的内联编辑（M4 T7）：只用手写表单，不引入组件库 */
+.review-edit {
+  display: grid; gap: var(--s-2); margin-top: var(--s-3);
+  padding: var(--s-3); border-radius: var(--r-sm);
+  background: var(--surface-sunken, var(--bg-subtle));
+}
+.review-edit[hidden] { display: none; }
+.review-edit .field { display: grid; gap: 4px; font-size: 12.5px; color: var(--fg-muted); }
+.review-edit select, .review-edit input {
+  min-height: 34px; padding: 0 var(--s-2);
+  border-radius: var(--r-sm); font: inherit; font-size: 13px;
+  background: var(--surface); color: var(--fg);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.review-edit .btn { justify-self: end; min-height: 34px; font-size: 13px; }
+
+/* 原声播放器：证据回跳时用它定位到片段起点（M4 T6） */
+.audio-bar { margin-bottom: var(--s-3); }
+.audio-bar audio { width: 100%; height: 36px; }
+
 .menu {
   position: fixed; z-index: 70; min-width: 252px; padding: 6px;
   border-radius: var(--r-md);

@@ -7,16 +7,49 @@
 
 override 的 `resolution` 有三种状态，对应人在回路的三个动作：
 confirmed（确认并入最终稿）、dismissed（丢弃）、pending（重新挂起待确认）。
+
+M4 追加两件事：
+* `pending_items`：待确认清单的唯一计算口径（待办 + 低置信度决议），
+  会议列表的 review_count、编排层的挂起判据、接口层的待确认区都调它，
+  避免三处各写一遍判断而漂移；
+* override 同样作用于决议（决议没有负责人与截止时间，只认 resolution）。
 """
 
 from __future__ import annotations
 
 import json
 import sqlite3
+from dataclasses import dataclass, field
 from datetime import datetime
 
-from app.domain.models import ActionItem, Meeting, Minutes
+from app.domain.models import (
+    ActionItem,
+    Decision,
+    Meeting,
+    Minutes,
+    REVIEW_CONFIDENCE_THRESHOLD,
+)
 from app.store.repos import MeetingRepo, iso, parse_date, utcnow
+
+@dataclass(frozen=True)
+class PendingItem:
+    """待确认条目：把待办与决议统一成一种形状，供接口层与编排层共用。"""
+
+    kind: str                     # action_item | decision
+    id: str                       # 纪要内部的条目 ID（不是全局 ID）
+    text: str
+    confidence: float
+    reason: str
+    owner: str | None = None
+    owner_source: str = "unknown"
+    due: "object | None" = None   # date | None
+    due_text: str | None = None
+    evidence: list[str] = field(default_factory=list)
+
+    @property
+    def editable(self) -> bool:
+        """决议没有负责人与截止时间可改，只有待办可编辑。"""
+        return self.kind == "action_item"
 
 
 class MinutesRepo:
@@ -133,6 +166,9 @@ def apply_overrides(minutes: Minutes, overrides: dict[str, dict]) -> Minutes:
 
     确认不等于改写置信度：模型原本的 confidence 原样保留，
     只是把把关的人从置信度阈值换成了人工。
+
+    M4 起决议也走同一张表：`resolution=dismissed` 的决议从纪要里移除，
+    `confirmed` 的决议解除待确认标记（决议没有 status / owner / due 可改）。
     """
     if not overrides:
         return minutes
@@ -165,9 +201,88 @@ def apply_overrides(minutes: Minutes, overrides: dict[str, dict]) -> Minutes:
                 override.get("note") or item.review_reason or "人工标记为待确认"
             )
         items.append(item.model_copy(update=changes))
-    return minutes.model_copy(update={"action_items": items})
+    decisions: list[Decision] = []
+    for decision in minutes.decisions:
+        override = overrides.get(decision.id)
+        if override is None:
+            decisions.append(decision)
+            continue
+        resolution = override.get("resolution")
+        if resolution == "dismissed":
+            continue
+        changes: dict = {}
+        if resolution == "confirmed":
+            changes["needs_review"] = False
+            changes["confirmed"] = True
+            changes["review_reason"] = None
+        elif resolution == "pending":
+            changes["needs_review"] = True
+            changes["review_reason"] = (
+                override.get("note") or decision.review_reason or "人工标记为待确认"
+            )
+        decisions.append(decision.model_copy(update=changes) if changes else decision)
+    return minutes.model_copy(update={"action_items": items, "decisions": decisions})
 
 
 def review_items(minutes: Minutes) -> list[ActionItem]:
     """待确认区条目：needs_review 为真且尚未被确认 / 丢弃。"""
     return [item for item in minutes.action_items if item.needs_review]
+
+
+def pending_items(
+    conn: sqlite3.Connection,
+    meeting_id: str,
+    *,
+    confidence_threshold: float = REVIEW_CONFIDENCE_THRESHOLD,
+    limit: int | None = None,
+) -> list[PendingItem]:
+    """待确认清单的唯一口径（《M4 计划》5.2）。
+
+    判据**只看合并 override 之后的结果**，因此：
+
+    * 人工确认过的条目不会再次挂起；
+    * 判据可以从数据库重建（`minutes` + `action_item_overrides`），
+      checkpoint 丢了也照样算得出"还剩几条"。
+
+    覆盖范围（决策 ②=A）：待办（`needs_review`）+ 低置信度决议。
+    """
+    minutes = MinutesRepo(conn).get_with_overrides(meeting_id)
+    if minutes is None:
+        return []
+    result: list[PendingItem] = []
+    for item in minutes.action_items:
+        if not item.needs_review:
+            continue
+        result.append(
+            PendingItem(
+                kind="action_item",
+                id=item.id,
+                text=item.task,
+                confidence=item.confidence,
+                reason=item.review_reason or "负责人或截止时间待补充",
+                owner=item.owner,
+                owner_source=item.owner_source,
+                due=item.due,
+                due_text=item.due_text,
+                evidence=list(item.evidence),
+            )
+        )
+    for decision in minutes.decisions:
+        if decision.confirmed:
+            continue
+        if decision.needs_review or decision.confidence < confidence_threshold:
+            result.append(
+                PendingItem(
+                    kind="decision",
+                    id=decision.id,
+                    text=decision.content,
+                    confidence=decision.confidence,
+                    reason=decision.review_reason
+                    or "置信度 %.2f 低于阈值 %.2f，请人工确认"
+                    % (decision.confidence, confidence_threshold),
+                    evidence=list(decision.evidence),
+                )
+            )
+    if limit is not None and limit > 0:
+        return result[:limit]
+    return result

@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 
 from app.api.schemas import MeetingDetail
+from app.api.schemas import ReviewItem
 from app.domain.models import Answer, AnswerBlock, AnswerItem, Message
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -91,3 +92,41 @@ def test_message_fields_used_by_ui_exist() -> None:
     """
     used = set(re.findall(r"\bresult\.message\.(\w+)", read("chat.js")))
     assert used <= set(Message.model_fields), sorted(used - set(Message.model_fields))
+
+
+def test_review_fields_used_by_ui_exist() -> None:
+    """待确认区读的字段必须都在 ReviewItem DTO 里（M4 加了 kind / due / editable）。"""
+    source = read("panel.js")
+    card = function_body(source, "reviewCard")
+    assert card, "panel.js 应该有一个 reviewCard 渲染函数"
+    used = set(re.findall(r"\bitem\.(\w+)", card))
+    missing = used - set(ReviewItem.model_fields)
+    assert not missing, "待确认区读取了 ReviewItem 不存在的字段：%s" % sorted(missing)
+
+
+def test_evidence_jump_supports_cross_meeting_and_audio() -> None:
+    """证据回跳的两条 M4 能力必须在代码里真实存在（静态断言，防止被重构掉）。"""
+    source = read("panel.js")
+    jump = function_body(source, "openSegment")
+    assert "loadLibrary" in jump, "跨会议引用需要先补齐会议库"
+    assert "await loadDetail" in jump, "引用所在会议不在库时要能按需加载详情"
+    raw = function_body(source, "renderRaw")
+    assert "/audio" in raw and "panelAudio" in raw, "有原声时要渲染播放器"
+    play = function_body(source, "playSegment")
+    assert "currentTime" in play, "点击引用要定位到片段起点"
+
+
+def test_frontend_stays_buildless() -> None:
+    """无构建链路：脚本与样式都是本地文件，没有打包产物。
+
+    字体是唯一允许的外链（设计令牌已定，M4 不改），因此这里只卡脚本与样式。
+    """
+    html = read("index.html")
+    scripts = re.findall(r'<script[^>]+src="([^"]+)"', html)
+    assert scripts, "页面应该通过本地脚本加载逻辑"
+    assert all(not src.startswith(("http://", "https://")) for src in scripts), scripts
+    styles = re.findall(r'<link[^>]+href="([^"]+\.css[^"]*)"', html)
+    assert styles and all(
+        not href.startswith(("http://", "https://")) for href in styles
+    ), styles
+    assert not (WEB / "dist").exists(), "不引入打包产物目录"

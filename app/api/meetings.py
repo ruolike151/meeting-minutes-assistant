@@ -7,11 +7,14 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 
 from app.api.deps import get_context
 from app.api.review import build_review_items
 from app.api.schemas import ActionItemPatch, MeetingDetail
 from app.agent.minutes import generate_meeting_minutes
+from app.agent.review import refresh_status
+from app.store.files import audio_path
 from app.store.minutes_repo import MinutesRepo
 from app.store.repos import MeetingRepo, SegmentRepo
 from app.tools.meetings import (
@@ -42,12 +45,20 @@ def list_meetings(
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
     participant: str | None = Query(default=None),
+    status: str | None = Query(
+        default=None, description="按处理状态过滤：processing / awaiting_review / processed"
+    ),
     ctx: ToolContext = Depends(get_context),
 ) -> ListMeetingsOutput:
     payload = ListMeetingsInput(
         q=q, date_from=date_from, date_to=date_to, participant=participant
     )
-    return _call(ctx, "list_meetings", payload)
+    result: ListMeetingsOutput = _call(ctx, "list_meetings", payload)
+    if status:
+        result = ListMeetingsOutput(
+            meetings=[item for item in result.meetings if item.status == status]
+        )
+    return result
 
 
 @router.get("/meetings/{meeting_id}", response_model=MeetingDetail)
@@ -83,6 +94,28 @@ def get_minutes(meeting_id: str, ctx: ToolContext = Depends(get_context)) -> Min
     return result.minutes
 
 
+@router.get("/meetings/{meeting_id}/audio")
+def get_meeting_audio(meeting_id: str, ctx: ToolContext = Depends(get_context)):
+    """会议原声（M4 T6）。
+
+    证据回跳要从"看到片段"走到"听到那句话"，所以必须有这个端点。
+    只允许读音频目录下的文件，且路径解析后必须仍在目录内（防目录穿越）。
+    样例种子数据没有音频文件，此时返回 404，前端隐藏播放器、只做高亮。
+    """
+    meeting = MeetingRepo(ctx.conn).get(meeting_id)
+    if meeting is None:
+        raise HTTPException(status_code=404, detail="会议不存在")
+    if ctx.settings is None:
+        raise HTTPException(status_code=500, detail="缺少运行配置")
+    try:
+        path = audio_path(meeting.audio_file, ctx.settings.audio_dir)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail="这场会议没有原声音频") from error
+    except PermissionError as error:
+        raise HTTPException(status_code=400, detail="音频路径不合法") from error
+    return FileResponse(path, media_type="audio/mpeg", filename=path.name)
+
+
 @router.post("/meetings/{meeting_id}/minutes/regenerate", response_model=MinutesDetail)
 def regenerate_minutes(
     meeting_id: str, ctx: ToolContext = Depends(get_context)
@@ -107,6 +140,9 @@ def regenerate_minutes(
         ctx.settings, ctx.conn, meeting, segments, fallback=MinutesRepo(ctx.conn).get(meeting_id)
     )
     MinutesRepo(ctx.conn).save(minutes)
+    # M4：重算可能重新产生待确认条目，状态要跟着走（否则会议会留在 processed
+    # 却带着一堆待确认项，会议库徽标与列表筛选同时失真）
+    refresh_status(ctx.conn, meeting_id, ctx.settings)
     saved = MinutesRepo(ctx.conn).get_with_overrides(meeting_id)
     payload = saved or minutes
     return MinutesDetail(

@@ -17,6 +17,7 @@ python-dotenv==1.2.3       # .env 载入（Key 不入库）
 
 # M3 编排与检索（《M3 编排与检索阶段实施计划》T0）
 langgraph==1.2.11          # 编排状态图（唯一使用框架的模块是 agent/graph.py）
+langgraph-checkpoint-sqlite==3.1.1  # M4：持久化检查点（挂起与恢复，agent/checkpoint.py）
 langchain-core==1.6.3      # 消息与工具契约
 openai==3.13.0             # OpenAI 兼容协议客户端（DeepSeek 等同一套代码）
 numpy==2.5.1               # 向量召回（候选集内暴力余弦）

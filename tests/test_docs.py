@@ -23,6 +23,9 @@ TECH_DOC = ROOT / 'docs' / '技术方案.md'
 M2_PLAN = ROOT / 'docs' / 'M2-感知阶段实施计划.md'
 M3_PLAN = ROOT / 'docs' / 'M3-编排与检索阶段实施计划.md'
 M3_REPORT = ROOT / 'docs' / 'M3-编排与检索评测报告.md'
+M4_PLAN = ROOT / 'docs' / 'M4-协同阶段实施计划.md'
+M5_PLAN = ROOT / 'docs' / 'M5-评测阶段实施计划.md'
+M4_REPORT = ROOT / 'docs' / 'M4-协同阶段验收报告.md'
 PROTO_README = ROOT / 'prototype' / 'README.md'
 
 PRODUCT_SECTIONS = [
@@ -97,6 +100,73 @@ M3_PLAN_SECTIONS = [
 
 # 计划里必须给出的任务编号：T0 到 T9 一个都不能少
 M3_PLAN_TASKS = ['### T%d ' % index for index in range(10)]
+
+# M4/M5 是待执行的两份计划：结构、任务编号与关键约束都要写全，
+# 否则执行到一半才发现"计划里没提这件事"。
+M4_PLAN_SECTIONS = [
+    '## 1. 目标与验收口径',
+    '## 2. 现状盘点',
+    '## 3. 差距分析',
+    '## 5. 关键设计',
+    '## 8. 任务分解',
+    '## 9. 测试策略',
+    '## 10. 需要你决策的事项',
+    '## 11. 需要你提供或确认的东西',
+    '## 15. M4 明确不做',
+]
+
+M4_PLAN_TASKS = ['### T%d ' % index for index in range(9)]
+
+M4_PLAN_KEYWORDS = [
+    'C3 不回退',
+    '事件契约',
+    'interrupt',
+    'Command(resume',
+    'checkpointer',
+    'override',
+    'review_gate',
+    'awaiting_review',
+    'MA_REVIEW_MODE',
+    'MA_CHECKPOINT_BACKEND',
+]
+
+M5_PLAN_SECTIONS = [
+    '## 1. 目标与验收口径',
+    '## 2. 现状盘点',
+    '## 3. 差距分析',
+    '## 5. 关键设计',
+    '## 8. 任务分解',
+    '## 9. 测试策略',
+    '## 10. 需要你决策的事项',
+    '## 11. 需要你提供或确认的东西',
+    '## 15. M5 明确不做',
+]
+
+M5_PLAN_TASKS = ['### T%d ' % index for index in range(10)]
+
+M5_PLAN_KEYWORDS = [
+    'C3 不回退',
+    'Recall@k',
+    'MRR',
+    '拒答',
+    '证据正确率',
+    '人工抽样',
+    '重排',
+    'Langfuse',
+    'MA_EVAL_TOKEN_BUDGET',
+    'MA_RERANK_MODE',
+]
+
+# M4 验收报告必须覆盖的章节（与 M3 报告同款约束：报告要有口径、结论与偏差）
+M4_REPORT_SECTIONS = [
+    '## 1. 验收口径与结论',
+    '## 2. 挂起与恢复',
+    '## 3. 待确认区与人工动作',
+    '## 4. 证据回跳与原声',
+    '## 5. 状态机与事件',
+    '## 6. 测试与回归',
+    '## 7. 与计划的显式偏差',
+]
 
 M3_REPORT_SECTIONS = [
     '## 1. 评测口径',
@@ -233,6 +303,8 @@ def run() -> list[str]:
     check('技术方案存在', TECH_DOC.is_file(), str(TECH_DOC))
     check('M2 实施计划存在', M2_PLAN.is_file(), str(M2_PLAN))
     check('M3 实施计划存在', M3_PLAN.is_file(), str(M3_PLAN))
+    check('M4 实施计划存在', M4_PLAN.is_file(), str(M4_PLAN))
+    check('M5 实施计划存在', M5_PLAN.is_file(), str(M5_PLAN))
     check('原型 README 存在', PROTO_README.is_file(), str(PROTO_README))
     if FAILURES:
         return list(FAILURES)
@@ -242,8 +314,11 @@ def run() -> list[str]:
     readme = read(PROTO_README)
     m3_plan = read(M3_PLAN)
     m3_report = read(M3_REPORT)
+    m4_plan = read(M4_PLAN)
+    m5_plan = read(M5_PLAN)
     env_example = read(ROOT / '.env.example')
     config_source = read(ROOT / 'app' / 'config.py')
+    readme_root = read(ROOT / 'README.md')
     tech_status = read(TECH_DOC)
 
     print('[2] 产品设计文档结构')
@@ -299,6 +374,10 @@ def run() -> list[str]:
     check('产品文档无「段落紧跟分隔线」', not p_issues, '；'.join(p_issues))
     check('技术方案无「段落紧跟分隔线」', not t_issues, '；'.join(t_issues))
     check('M3 计划无「段落紧跟分隔线」', not m_issues, '；'.join(m_issues))
+    m4_issues = rule_line_issues(m4_plan)
+    m5_issues = rule_line_issues(m5_plan)
+    check('M4 计划无「段落紧跟分隔线」', not m4_issues, '；'.join(m4_issues))
+    check('M5 计划无「段落紧跟分隔线」', not m5_issues, '；'.join(m5_issues))
 
     print('[10] M3 实施计划结构')
     for heading in M3_PLAN_SECTIONS:
@@ -322,6 +401,54 @@ def run() -> list[str]:
     check('.env.example 覆盖全部 M3 开关', not missing_example, '缺失：' + '、'.join(missing_example))
     check('.env 未入库（.gitignore 已排除）', '.env' in read(ROOT / '.gitignore'))
     check('SSE 事件契约写在 M3 计划里', 'stage' in m3_plan and 'delta' in m3_plan)
+
+    print('[12] M4 协同计划结构')
+    for heading in M4_PLAN_SECTIONS:
+        check('M4 计划含章节 ' + heading, heading in m4_plan)
+    missing_m4_tasks = [task for task in M4_PLAN_TASKS if task not in m4_plan]
+    check('M4 计划含 T0–T8 全部任务', not missing_m4_tasks, '缺失：' + '、'.join(missing_m4_tasks))
+    for keyword in M4_PLAN_KEYWORDS:
+        check('M4 计划含 ' + keyword, keyword in m4_plan, '关键设计未写全')
+    check('M4 计划列出待决策事项', m4_plan.count('### ①') == 1 and m4_plan.count('### ④') == 1)
+    check('M4 计划给出 M5 划界', 'M5 评测' in m4_plan)
+
+    print('[13] M5 评测计划结构')
+    for heading in M5_PLAN_SECTIONS:
+        check('M5 计划含章节 ' + heading, heading in m5_plan)
+    missing_m5_tasks = [task for task in M5_PLAN_TASKS if task not in m5_plan]
+    check('M5 计划含 T0–T9 全部任务', not missing_m5_tasks, '缺失：' + '、'.join(missing_m5_tasks))
+    for keyword in M5_PLAN_KEYWORDS:
+        check('M5 计划含 ' + keyword, keyword in m5_plan, '关键设计未写全')
+    check('M5 计划列出待决策事项', m5_plan.count('### ①') == 1 and m5_plan.count('### ⑤') == 1)
+    check('M5 计划收口 M3 的重排决策', 'M3 决策 ③' in m5_plan)
+    check('M5 计划声明单测与评测分离', '单测与评测分离' in m5_plan)
+
+    print('[14] README 与两份计划互相指向')
+    check('README 链接 M4 计划', 'M4-协同阶段实施计划.md' in readme_root)
+    check('README 链接 M5 计划', 'M5-评测阶段实施计划.md' in readme_root)
+    check('M4 计划链接 M5 计划', 'M5-评测阶段实施计划.md' in m4_plan)
+    check('M5 计划链接 M4 计划', 'M4-协同阶段实施计划.md' in m5_plan)
+
+    print('[15] M4 验收报告与实现一致')
+    if not M4_REPORT.is_file():
+        check('M4 验收报告存在', False, str(M4_REPORT))
+        return list(FAILURES)
+    m4_report = read(M4_REPORT)
+    for heading in M4_REPORT_SECTIONS:
+        check('M4 验收报告含章节 ' + heading, heading in m4_report)
+    check('技术方案标记 M4 已完成', 'M4 协同 ✅' in tech_status)
+    check('README 链接 M4 验收报告', 'M4-协同阶段验收报告.md' in readme_root)
+    check('M4 计划标记实施完成', '已实施完成' in m4_plan)
+    for path in (
+        'app/agent/checkpoint.py',
+        'app/agent/review.py',
+        'app/agent/nodes/minutes_nodes.py',
+        'app/store/review_repo.py',
+    ):
+        check('M4 新模块已落地 ' + path, (ROOT / path).is_file())
+    for key in ('MA_CHECKPOINT_BACKEND', 'MA_REVIEW_MODE', 'MA_REVIEW_CONFIDENCE'):
+        check('M4 开关写在 config.py ' + key, key in config_source)
+        check('M4 开关写在 .env.example ' + key, key in env_example)
 
     return list(FAILURES)
 

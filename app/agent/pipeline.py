@@ -18,6 +18,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Iterator
 
+from app.agent.checkpoint import checkpoint_config, open_checkpointer
 from app.agent.graph import NODE_LABELS, build_graph
 from app.agent.history import compress_history, load_history
 from app.agent.nodes import NodeContext
@@ -28,6 +29,7 @@ from app.llm.client import LLMClient, LLMUnavailable
 from app.llm.factory import get_client
 from app.llm.fake import FakeLLMClient
 from app.retrieval.encoder import EncoderUnavailable, TextEncoder, select_encoder
+from app.store.repos import new_id
 
 
 def respond(
@@ -76,10 +78,18 @@ def stream(
         llm=llm,
         encoder=encoder,
     )
-    graph = build_graph(context)
+    # 检查点要有 thread_id 才能用（LangGraph 的硬性要求）。第一轮没有会话 ID 时
+    # 先生成一个：它同时是这个 thread 的键与最终落库的会话 ID，两者必须一致，
+    # 否则第二轮恢复不到上一轮的状态。
+    saver = open_checkpointer(settings)
+    thread_id = conversation_id
+    if saver is not None and not thread_id:
+        thread_id = new_id("c")
+    graph = build_graph(context, checkpointer=saver)
     state = {
         "user_input": user_input,
-        "conversation_id": conversation_id,
+        "conversation_id": thread_id,
+        "thread_id": thread_id,
         "active_meeting_id": active_meeting_id,
         "attachments": [],
         "history": [message.model_dump() for message in context.history],
@@ -88,7 +98,8 @@ def stream(
     }
 
     result: ChatResult | None = None
-    for chunk in graph.stream(state, stream_mode="updates"):
+    config = checkpoint_config(thread_id) or None
+    for chunk in graph.stream(state, config, stream_mode="updates"):
         for node_name, update in chunk.items():
             yield "stage", {"node": node_name, "label": NODE_LABELS.get(node_name, node_name)}
             if isinstance(update, dict) and update.get("result") is not None:

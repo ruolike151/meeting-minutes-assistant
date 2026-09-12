@@ -97,6 +97,14 @@ HASH_EMBEDDING_DIM = 256                 # 纯标准库兜底编码器的维度
 HASH_EMBEDDING_NAME = "hash-bigram-v1"   # 记录进 segment_embeddings.encoder
 DEFAULT_HISTORY_ROUNDS = 3
 
+# -- 协同层参数（M4）---------------------------------------------------
+DEFAULT_CHECKPOINT_BACKEND = "sqlite"    # sqlite | memory | off
+VALID_CHECKPOINT_BACKENDS = ("sqlite", "memory", "off")
+DEFAULT_REVIEW_MODE = "gate"             # gate（挂起等人工确认）| off（生成完直接收尾）
+VALID_REVIEW_MODES = ("gate", "off")
+DEFAULT_REVIEW_CONFIDENCE = 0.75         # 低于该置信度的决议 / 待办进入待确认区
+DEFAULT_REVIEW_MAX_ITEMS = 20            # 单场会议待确认条目上限
+
 # -- 感知层参数（M2）---------------------------------------------------
 DEFAULT_PERCEPTION_BACKEND = "offline"          # offline | local | auto
 DEFAULT_WHISPER_MODEL = "small"                 # tiny | small | medium | 本地目录
@@ -255,6 +263,13 @@ class Settings:
     retrieval: RetrievalSettings = field(default_factory=RetrievalSettings.from_env)
     history_rounds: int = DEFAULT_HISTORY_ROUNDS
 
+    # -- 协同（M4）--
+    checkpoint_backend: str = DEFAULT_CHECKPOINT_BACKEND   # sqlite | memory | off
+    checkpoint_path: Path = ROOT / "data" / "checkpoints.sqlite"
+    review_mode: str = DEFAULT_REVIEW_MODE                 # gate | off
+    review_confidence: float = DEFAULT_REVIEW_CONFIDENCE
+    review_max_items: int = DEFAULT_REVIEW_MAX_ITEMS
+
     @classmethod
     def from_env(
         cls,
@@ -317,6 +332,21 @@ class Settings:
             ),
             retrieval=RetrievalSettings.from_env(),
             history_rounds=_env_int("MA_HISTORY_ROUNDS", DEFAULT_HISTORY_ROUNDS),
+            checkpoint_backend=_env_choice(
+                "MA_CHECKPOINT_BACKEND",
+                DEFAULT_CHECKPOINT_BACKEND,
+                VALID_CHECKPOINT_BACKENDS,
+            ),
+            checkpoint_path=Path(
+                _env("MA_CHECKPOINT_PATH", str(base / "checkpoints.sqlite"))
+            ).expanduser(),
+            review_mode=_env_choice(
+                "MA_REVIEW_MODE", DEFAULT_REVIEW_MODE, VALID_REVIEW_MODES
+            ),
+            review_confidence=_env_float(
+                "MA_REVIEW_CONFIDENCE", DEFAULT_REVIEW_CONFIDENCE
+            ),
+            review_max_items=_env_int("MA_REVIEW_MAX_ITEMS", DEFAULT_REVIEW_MAX_ITEMS),
         )
 
     # -- 派生路径 ---------------------------------------------------------
@@ -370,6 +400,12 @@ class Settings:
     def resolved_embedding_model_dir(self) -> Path:
         """本地文本向量权重目录：绝对路径原样使用，相对路径按项目根解析。"""
         raw = Path(self.embedding_model_dir)
+        return raw if raw.is_absolute() else ROOT / raw
+
+    @property
+    def resolved_checkpoint_path(self) -> Path:
+        """检查点库文件：绝对路径原样使用，相对路径按项目根解析（M4）。"""
+        raw = Path(self.checkpoint_path)
         return raw if raw.is_absolute() else ROOT / raw
 
     def ensure_dirs(self) -> None:

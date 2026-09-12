@@ -37,6 +37,32 @@ def save_audio(data: bytes, filename: str, audio_dir: str | Path) -> Path:
     return target
 
 
+def audio_path(filename: str | None, audio_dir: str | Path) -> Path:
+    """定位会议原声文件（M4 T6）。
+
+    两道校验，缺一不可：
+
+    1. **文件名必须是纯文件名**（`Path(filename).name == filename`），
+       否则 `meetings.audio_file` 里存了带路径的值就能读到目录外；
+    2. **解析后必须仍在音频目录内**（`resolve()` 之后再比较），
+       这样软链接或 `..` 也逃不出去。
+
+    文件不存在抛 `FileNotFoundError`（接口转 404），路径越界抛 `PermissionError`（转 400）。
+    """
+    if not filename:
+        raise FileNotFoundError("没有记录音频文件名")
+    raw = Path(filename)
+    if raw.name != filename or raw.is_absolute():
+        raise PermissionError("音频文件名不合法")
+    base = Path(audio_dir).resolve()
+    target = (base / raw.name).resolve()
+    if base != target.parent:
+        raise PermissionError("音频路径超出音频目录")
+    if not target.is_file():
+        raise FileNotFoundError("音频文件不存在")
+    return target
+
+
 def write_export(export_dir: str | Path, filename: str, text: str) -> Path:
     """导出文本落盘（同时作为接口的响应体来源，便于排查生成结果）。"""
     target_dir = Path(export_dir)

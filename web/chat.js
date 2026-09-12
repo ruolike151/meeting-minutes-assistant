@@ -252,6 +252,9 @@ export async function processAudio(file) {
           const progress = Math.round(((data.index + 1) / task.stages.length) * 100);
           bar.style.width = progress + '%';
           pct.textContent = progress + '%';
+        } else if (event === 'review') {
+          // 有待确认条目：提示用户去哪里处理（M4），处理入口在右侧待确认 tab
+          toast('有 ' + data.count + ' 条内容需要你确认，已切到待确认区');
         } else if (event === 'result') {
           resolve(data.meeting_id);
         } else if (event === 'error') {

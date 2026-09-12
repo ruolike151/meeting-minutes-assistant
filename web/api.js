@@ -141,7 +141,8 @@ export async function uploadAudio(file) {
 
 export function taskEvents(taskId, onEvent) {
   const source = new EventSource('/api/tasks/' + encodeURIComponent(taskId) + '/events');
-  ['stage', 'result', 'done', 'error'].forEach((name) => {
+  // review 事件（M4）在"纪要生成完但有待确认条目"时推送
+  ['stage', 'review', 'result', 'done', 'error'].forEach((name) => {
     source.addEventListener(name, (event) => {
       let data = {};
       try {

@@ -18,6 +18,7 @@ from typing import TypedDict
 from app.domain.models import (
     Answer,
     Intent,
+    Meeting,
     Minutes,
     Segment,
     TraceStep,
@@ -85,3 +86,23 @@ class AgentState(TypedDict, total=False):
     retry_count: int
     trace: list[TraceStep]
     usage: dict
+
+
+class MinutesState(TypedDict, total=False):
+    """minutes 图的状态（M4 T2）：一场会议从生成到收尾。
+
+    与 `AgentState` 分开定义的理由：两张图的输入与生命周期完全不同——
+    chat 图按会话（conversation_id）走，minutes 图按会议（meeting_id）走。
+    合成一个大 TypedDict 会让"哪个字段属于哪条链路"变得要靠注释才看得懂。
+    """
+
+    meeting_id: str
+    meeting: Meeting
+    segments: list[Segment]
+    minutes: Minutes | None
+    notes: list[str]
+    retry_count: int
+    pending_count: int
+    review_payload: dict
+    resume_value: object
+    status: str

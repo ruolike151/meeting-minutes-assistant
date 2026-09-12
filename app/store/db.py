@@ -2,6 +2,7 @@
 
 迁移用 `PRAGMA user_version` 做版本号，逐条叠加：
 v1 骨架（M1）、v2 声纹与任务（M2）、v3 片段向量与对话 trace（M3）。
+v4 人工确认审计与会议状态（M4）。
 
 每一项要么是一段 SQL（`executescript`），要么是一个函数——因为 v3 里的
 `ALTER TABLE conversations ADD COLUMN summary` 需要先判断列是否存在，
@@ -188,6 +189,27 @@ CREATE INDEX IF NOT EXISTS idx_traces_conversation ON chat_traces(conversation_i
 CREATE INDEX IF NOT EXISTS idx_traces_created ON chat_traces(created_at);
 """
 
+# v4：人工确认的审计表。人工结论本身存在 action_item_overrides（M1 起就在），
+# 这里记的是「谁在什么时候做了什么动作」，M5 的"人工介入率 / 驳回率"直接取自它。
+SCHEMA_V4 = """
+CREATE TABLE IF NOT EXISTS review_events(
+    id         TEXT PRIMARY KEY,
+    meeting_id TEXT NOT NULL,
+    item_id    TEXT NOT NULL,
+    kind       TEXT NOT NULL,               -- action_item | decision
+    action     TEXT NOT NULL,               -- confirm | dismiss | edit | reopen
+    before     TEXT NOT NULL DEFAULT '{}',  -- 变更前快照（JSON）
+    after      TEXT NOT NULL DEFAULT '{}',  -- 变更后快照（JSON）
+    actor      TEXT NOT NULL DEFAULT 'user',
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_review_events_meeting
+    ON review_events(meeting_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_review_events_item
+    ON review_events(item_id, created_at);
+"""
+
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
     """幂等加列：SQLite 不支持 `ADD COLUMN IF NOT EXISTS`，只能先问 PRAGMA。"""
@@ -204,6 +226,10 @@ def _migrate_v3(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "tasks", "notes", "TEXT")
 
 
+def _migrate_v4(conn: sqlite3.Connection) -> None:
+    conn.executescript(SCHEMA_V4)
+
+
 # 一个迁移项要么是 SQL 脚本，要么是函数（需要条件判断时用函数）
 MigrationStep = str | Callable[[sqlite3.Connection], None]
 
@@ -211,6 +237,7 @@ MIGRATIONS: list[tuple[int, MigrationStep]] = [
     (1, SCHEMA_V1),
     (2, SCHEMA_V2),
     (3, _migrate_v3),
+    (4, _migrate_v4),
 ]
 
 

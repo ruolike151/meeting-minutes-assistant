@@ -86,3 +86,54 @@ def test_human_review_flow_updates_exports(client) -> None:
 
     markdown = client.get("/api/export/m_20260904", params={"format": "md"}).text
     assert "王强" in markdown
+
+
+def test_upload_review_resume_flow(client) -> None:
+    """M4 完整闭环：上传 → 挂起等确认 → 逐条确认 → 收尾 → 继续追问。
+
+    这条用例是"人在回路"的验收线：挂起不是失败，确认之后会议才算处理完，
+    处理完之后追问仍然带引用。
+    """
+    meeting_id = upload(client, "移动端体验专项讨论.mp3")
+
+    detail = client.get("/api/meetings/" + meeting_id).json()
+    assert detail["status"] == "awaiting_review"
+    review_items = [item for item in detail["review_items"] if item["meeting_id"] == meeting_id]
+    assert review_items, "离线样例纪要里的低置信度条目必须进待确认区"
+
+    # 逐条确认；最后一条确认后会议应转为 processed
+    last = None
+    for index, item in enumerate(review_items, start=1):
+        last = client.post(
+            "/api/review/" + item["id"] + "/resolve", json={"decision": "confirm"}
+        )
+        assert last.status_code == 200
+        assert last.json()["remaining"] == len(review_items) - index
+    assert last is not None
+    assert last.json()["finalized"] is True
+
+    detail = client.get("/api/meetings/" + meeting_id).json()
+    assert detail["status"] == "processed"
+    assert detail["review_items"] == []
+
+    # 收尾之后追问照旧：带引用，且引用属于这场会议
+    reply = client.post(
+        "/api/chat?stream=0",
+        json={"message": "这场会确定了什么？", "meeting_id": meeting_id},
+    ).json()
+    assert reply["answer"]["citations"]
+    assert {item["meeting_id"] for item in reply["answer"]["citations"]} == {meeting_id}
+
+
+def test_task_events_emit_review_event(client) -> None:
+    """挂着人工确认的任务要在 SSE 里说明原因，前端据此切到待确认区。"""
+    upload_response = client.post(
+        "/api/audio", files={"file": ("发票流程复盘.mp3", b"fake" * 16, "audio/mpeg")}
+    )
+    task_id = upload_response.json()["task_id"]
+    events = parse_sse(client.get("/api/tasks/" + task_id + "/events").text)
+    names = [name for name, _ in events]
+    assert "review" in names
+    payload = dict(events)["review"]
+    assert payload["count"] >= 1
+    assert payload["items"][0]["kind"] in ("action_item", "decision")

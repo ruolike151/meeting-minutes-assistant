@@ -149,20 +149,59 @@ function renderReview(detail) {
   const items = (detail.review_items || []).filter((item) => !store.dismissed.has(item.id));
   if (!items.length) {
     return '<div class="panel-empty">' + ICON.check +
-      '<p>没有待确认的条目<br><small>所有内容都已通过置信度校验</small></p></div>';
+      '<p>没有待确认的条目<br><small>所有内容都已通过置信度校验或人工确认</small></p></div>';
   }
-  return section('需要人工确认', items.length, items.map((item) =>
-    '<div class="card" data-review="' + item.id + '">' +
+  // 按类型分组：待办要补负责人/时间，决议只需要复核结论（M4 决策 ②=A）
+  const groups = [
+    { kind: 'action_item', title: '待办条目', hint: '负责人或截止时间需要你确认' },
+    { kind: 'decision', title: '决议条目', hint: '模型置信度偏低，请复核结论是否成立' },
+  ];
+  return groups.map((group) => {
+    const grouped = items.filter((item) => item.kind === group.kind);
+    if (!grouped.length) return '';
+    return section(group.title, grouped.length,
+      '<p class="review-why">' + ICON.help + escapeHtml(group.hint) + '</p>' +
+      grouped.map(reviewCard).join(''));
+  }).join('');
+}
+
+function reviewCard(item) {
+  const editForm = item.editable
+    ? '<div class="review-edit" data-edit-form="' + item.id + '" hidden>' +
+      '<label class="field"><span>负责人</span>' +
+      '<select data-field="owner">' +
+      '<option value="">保持未指定</option>' +
+      (detailById(item.meeting_id) ? detailById(item.meeting_id).participants || [] : [])
+        .map((p) => '<option value="' + escapeHtml(p.id) + '"' +
+          (p.id === item.owner ? ' selected' : '') + '>' + escapeHtml(p.name) + '</option>').join('') +
+      '</select></label>' +
+      '<label class="field"><span>截止时间</span>' +
+      '<input type="date" data-field="due" value="' + escapeHtml(item.due || '') + '"></label>' +
+      '<button class="btn btn-primary" type="button" data-save="' + item.id + '">保存并确认</button>' +
+      '</div>'
+    : '';
+  const editButton = item.editable
+    ? '<button class="btn btn-ghost" type="button" data-edit="' + item.id + '">修改</button>' : '';
+  return '<div class="card review-card" data-review="' + item.id + '">' +
     '<ul class="card-points"><li>' + escapeHtml(item.task) + '</li></ul>' +
     '<p class="review-why">' + ICON.help + escapeHtml(item.reason) + '</p>' +
-    '<div class="card-foot">' + ownerChip(item.owner) + citationsHtml(item.citations) +
-    '</div><div class="review-actions">' +
+    '<div class="card-foot">' + ownerChip(item.owner) + dueChip(item) +
+    citationsHtml(item.citations) +
+    '<span class="conf">置信度 ' + Math.round((item.confidence || 0) * 100) + '%</span>' +
+    '</div>' + editForm +
+    '<div class="review-actions">' +
     '<button class="btn btn-ghost" type="button" data-dismiss="' + item.id + '">忽略</button>' +
+    editButton +
     '<button class="btn btn-primary" type="button" data-confirm="' + item.id + '">' +
-    ICON.check + '确认通过</button></div></div>').join(''));
+    ICON.check + '确认通过</button></div></div>';
 }
 
 function renderRaw(detail) {
+  // 有原声就给出播放器：点击引用时会定位到该片段的起点（M4 决策 ④=A）
+  const audio = detail.audio_file
+    ? '<div class="audio-bar"><audio id="panelAudio" controls preload="none" src="/api/meetings/' +
+      encodeURIComponent(detail.id) + '/audio"></audio></div>'
+    : '';
   const turns = (detail.segments || []).map((segment) => {
     const low = segment.speaker_confidence < 0.93;
     return '<div class="turn' + (low ? ' low' : '') + '" id="seg-' + segment.id +
@@ -172,8 +211,9 @@ function renderRaw(detail) {
       speakerColor(segment.speaker_id) + '">' + escapeHtml(speakerName(segment.speaker_id)) +
       '</span></div><div class="turn-text">' + escapeHtml(segment.text) + '</div></div>';
   }).join('');
-  return '<p class="raw-note">完整转写 · 点击回答中的引用会跳转并高亮对应片段。' +
-    '声纹置信度低于 0.93 的片段带 ? 标记。</p>' + turns;
+  return audio + '<p class="raw-note">完整转写 · 点击回答中的引用会跳转并高亮对应片段' +
+    (detail.audio_file ? '，并从该句开始播放' : '（这场会议没有原声文件，只做高亮）') +
+    '。声纹置信度低于 0.93 的片段带 ? 标记。</p>' + turns;
 }
 
 export function renderPanel() {
@@ -217,21 +257,60 @@ export function closePanel() {
   store.panelOpen = false;
 }
 
-export function openSegment(meetingId, segmentId) {
-  if (!meetingById(meetingId)) return;
+export async function openSegment(meetingId, segmentId) {
+  // 跨会议引用：引用可能来自侧栏当前没有的会议，先补齐会议库再跳（M4 T6）
+  if (!meetingById(meetingId)) {
+    try {
+      await loadLibrary();
+    } catch (error) {
+      toast('会议库加载失败，无法跳转引用');
+      return;
+    }
+  }
+  if (!meetingById(meetingId)) {
+    toast('这条引用所属的会议不在会议库里');
+    return;
+  }
   store.panelMeetingId = meetingId;
   openPanel();
   const run = () => {
     setTab('raw');
-    const node = $('#seg-' + segmentId);
-    if (!node) return;
-    $$('.turn.hit').forEach((item) => item.classList.remove('hit'));
-    node.classList.add('hit');
-    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    setTimeout(() => node.classList.remove('hit'), 2600);
+    focusSegment(segmentId);
+    playSegment(meetingId, segmentId);
   };
-  if (detailById(meetingId)) run();
-  else loadDetail(meetingId).then(run).catch(() => toast('会议详情加载失败'));
+  if (detailById(meetingId)) {
+    run();
+    return;
+  }
+  try {
+    await loadDetail(meetingId);
+    run();
+  } catch (error) {
+    toast('会议详情加载失败');
+  }
+}
+
+function focusSegment(segmentId) {
+  const node = $('#seg-' + segmentId);
+  if (!node) return;
+  $$('.turn.hit').forEach((item) => item.classList.remove('hit'));
+  node.classList.add('hit');
+  node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => node.classList.remove('hit'), 2600);
+}
+
+function playSegment(meetingId, segmentId) {
+  const detail = detailById(meetingId);
+  const audio = $('#panelAudio');
+  if (!detail || !audio) return;
+  const segment = (detail.segments || []).find((item) => item.id === segmentId);
+  if (!segment) return;
+  try {
+    audio.currentTime = segment.start;
+    audio.play();
+  } catch (error) {
+    /* 浏览器可能因自动播放策略拒绝：定位仍然生效，不弹错 */
+  }
 }
 
 export async function handlePanelClick(event) {
@@ -248,19 +327,54 @@ export async function handlePanelClick(event) {
   const confirmBtn = event.target.closest('[data-confirm]');
   if (confirmBtn) {
     const key = confirmBtn.dataset.confirm;
-    await api.resolveReview(key, { decision: 'confirm' });
-    store.dismissed.add(key);
-    await refreshDetail(key.split(':')[0]);
-    toast('已确认，条目已并入最终纪要', 'ok');
+    await resolveWithRollback(key, { decision: 'confirm' }, '已确认，条目已并入最终纪要');
     return;
   }
   const dismissBtn = event.target.closest('[data-dismiss]');
   if (dismissBtn) {
     const key = dismissBtn.dataset.dismiss;
-    await api.resolveReview(key, { decision: 'dismiss' });
-    store.dismissed.add(key);
+    await resolveWithRollback(key, { decision: 'dismiss' }, '已忽略该条目');
+    return;
+  }
+  const editBtn = event.target.closest('[data-edit]');
+  if (editBtn) {
+    const form = document.querySelector('[data-edit-form="' + editBtn.dataset.edit + '"]');
+    if (form) form.hidden = !form.hidden;
+    return;
+  }
+  const saveBtn = event.target.closest('[data-save]');
+  if (saveBtn) {
+    const key = saveBtn.dataset.save;
+    const card = saveBtn.closest('[data-edit-form]') || document;
+    const owner = (card.querySelector('[data-field="owner"]') || {}).value || null;
+    const due = (card.querySelector('[data-field="due"]') || {}).value || null;
+    if (!owner && !due) {
+      toast('至少填负责人或截止时间');
+      return;
+    }
+    await resolveWithRollback(
+      key, { action: 'edit', owner: owner, due: due }, '已保存并确认', true);
+  }
+}
+
+/* 人工确认的乐观更新：先动本地状态让界面立刻响应，请求失败再回滚并提示。
+   M1 的版本只乐观不回滚，网络失败时界面会"假装成功"（M4 T7 修正）。 */
+async function resolveWithRollback(key, body, okText, confirmAfterEdit) {
+  store.dismissed.add(key);
+  renderPanel();
+  try {
+    if (confirmAfterEdit) {
+      await api.resolveReview(key, body);
+      await api.resolveReview(key, { decision: 'confirm' });
+    } else {
+      await api.resolveReview(key, body);
+    }
     await refreshDetail(key.split(':')[0]);
-    toast('已忽略该条目');
+    toast(okText, 'ok');
+  } catch (error) {
+    store.dismissed.delete(key);
+    renderPanel();
+    toast('操作没成功：' + error.message);
   }
 }
 

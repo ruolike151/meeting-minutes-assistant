@@ -19,6 +19,7 @@ import sqlite3
 from typing import Sequence
 
 from app.domain.models import Segment
+from app.config import Settings
 from app.retrieval.encoder import TextEncoder
 from app.store.embeddings_repo import EmbeddingRepo
 from app.store.repos import MeetingRepo, SegmentRepo
@@ -73,3 +74,19 @@ def ensure_library_index(
         if note:
             notes.append("%s: %s" % (meeting.id, note))
     return total, "；".join(notes)
+
+
+def index_meeting(settings: Settings, conn: sqlite3.Connection, meeting_id: str) -> str:
+    """按配置给一场会议建向量索引，返回说明（空串表示没问题）。
+
+    音频任务与编排层的生成节点共用这一个入口：索引只是增强，
+    编码器缺失或失败都不该让会议处理失败（与感知层的"降级而非崩溃"同源）。
+    """
+    from app.retrieval.encoder import EncoderUnavailable, select_encoder
+
+    try:
+        encoder = select_encoder(settings).encoder
+    except EncoderUnavailable as error:
+        return "编码器不可用，已退回关键词检索：%s" % error
+    _written, note = ensure_meeting_index(conn, encoder, meeting_id)
+    return note
