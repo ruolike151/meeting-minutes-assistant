@@ -76,8 +76,8 @@ MIN_TOKEN_LEN = 2           # 单字不成词，过滤掉「吃」「说」这�
 # -- LLM 与文本向量（M3）-----------------------------------------------
 DEFAULT_LLM_PROVIDER = "openai"          # 协议名，不是厂商名：换厂商只改 base_url + 模型
 DEFAULT_LLM_MODE = "auto"                # auto | live | cache_first | off
-DEFAULT_LLM_BASE_URL = "https://api.deepseek.com/v1"
-DEFAULT_LLM_MODEL = "deepseek-chat"
+DEFAULT_LLM_BASE_URL = "https://api.deepseek.com"   # DeepSeek 官方域名（/v1 也可用）
+DEFAULT_LLM_MODEL = "deepseek-flash"
 DEFAULT_LLM_TIMEOUT = 60.0
 DEFAULT_ROUTE_MODE = "auto"              # auto | llm | rules
 DEFAULT_VERIFY_MODE = "rule"             # rule | llm

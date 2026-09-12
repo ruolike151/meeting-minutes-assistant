@@ -60,8 +60,8 @@ def test_defaults_match_deepseek_openai_compatible(tmp_path, monkeypatch) -> Non
     clear_llm_env(monkeypatch)
     settings = Settings.from_env(tmp_path / "data")
     assert settings.llm_provider == "openai"
-    assert settings.llm_base_url == "https://api.deepseek.com/v1"
-    assert settings.llm_model_answer == "deepseek-chat"
+    assert settings.llm_base_url == "https://api.deepseek.com"
+    assert settings.llm_model_answer == "deepseek-flash"
 
 
 def test_invalid_enum_values_fall_back(tmp_path, monkeypatch) -> None:

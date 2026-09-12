@@ -11,7 +11,7 @@ from app.llm.cache import CachedLLMClient, UsageTracker, prompt_hash
 from app.llm.client import ChatMessage, LLMResult, LLMUnavailable
 from app.llm.fake import FakeLLMClient
 from app.llm.factory import get_client, get_client_with_usage
-from app.llm.openai_compat import OpenAICompatClient, estimate_cost
+from app.llm.openai_compat import OpenAICompatClient, estimate_cost, price_known
 
 
 def make_settings(tmp_path, **changes) -> Settings:
@@ -104,6 +104,13 @@ def test_estimate_cost_handles_unknown_model() -> None:
     assert estimate_cost("deepseek-chat", 0, 1_000_000) == 2.0
     assert estimate_cost("some-new-model", 1000, 1000) == 0.0
     assert estimate_cost("m", 1_000_000, 1_000_000, price_override=(3.0, 4.0)) == 7.0
+
+
+def test_price_known_tells_caller_when_cost_will_be_zero() -> None:
+    """未知模型不算价：冒烟脚本据此提示用户配价目表，而不是编一个数字。"""
+    assert price_known("deepseek-chat") is True
+    assert price_known("deepseek-flash") is False
+    assert price_known("deepseek-flash", price_override=(1.0, 2.0)) is True
 
 
 def test_prompt_hash_changes_with_every_input() -> None:

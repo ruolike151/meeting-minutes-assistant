@@ -118,8 +118,8 @@ Copy-Item .env.example .env      # 然后把 MA_LLM_API_KEY 填上你自己的 K
 
 ```ini
 MA_LLM_PROVIDER=openai
-MA_LLM_BASE_URL=https://api.deepseek.com/v1   # 换成任意 OpenAI 兼容端点
-MA_LLM_MODEL_ANSWER=deepseek-chat
+MA_LLM_BASE_URL=https://api.deepseek.com   # 换成任意 OpenAI 兼容端点
+MA_LLM_MODEL_ANSWER=deepseek-flash
 ```
 
 虚拟环境按要求建在项目根目录下：`meeting_assistant/`（已加入 `.gitignore`，不入库）。

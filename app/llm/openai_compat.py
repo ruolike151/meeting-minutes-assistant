@@ -43,6 +43,16 @@ def estimate_cost(
     )
 
 
+def price_known(model: str, *, price_override: tuple[float, float] | None = None) -> bool:
+    """价目表里有没有这个模型。
+
+    没有的话费用会记 0——这是有意的选择：宁可显示"未知"，
+    也不要拿另一个模型的单价硬套出一个看起来精确的错数字。
+    调用方（冒烟脚本）据此提示用户配置 `MA_LLM_PRICE_INPUT/OUTPUT`。
+    """
+    return price_override is not None or model in MODEL_PRICES
+
+
 class OpenAICompatClient:
     def __init__(
         self,

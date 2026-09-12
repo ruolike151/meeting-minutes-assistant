@@ -22,6 +22,7 @@ if str(ROOT) not in sys.path:
 
 from app.agent.pipeline import respond  # noqa: E402
 from app.config import Settings  # noqa: E402
+from app.llm.openai_compat import price_known  # noqa: E402
 from app.store.bootstrap import bootstrap  # noqa: E402
 from app.store.traces_repo import TraceRepo  # noqa: E402
 
@@ -45,6 +46,12 @@ def main() -> int:
 
     print("模式：%s｜base_url=%s｜模型=%s"
           % (settings.effective_llm_mode, settings.llm_base_url, settings.llm_model_answer))
+    if not price_known(settings.llm_model_answer, price_override=settings.llm_price_override):
+        print(
+            "提示：价目表里没有 %s，费用会记 0（token 照常统计）。"
+            "想看到真实量级，请在 .env 里设置 MA_LLM_PRICE_INPUT / MA_LLM_PRICE_OUTPUT。"
+            % settings.llm_model_answer
+        )
     conn = bootstrap(settings)
     total = 0.0
     for question in DEMO_QUESTIONS:
