@@ -54,12 +54,17 @@ def main() -> int:
         )
     conn = bootstrap(settings)
     total = 0.0
+    total_tokens = 0
     for question in DEMO_QUESTIONS:
+        # 缓存条数变化 = 这次是否真的发了请求（命中缓存时 token 记 0 是正常的）
+        before = _cache_count(conn)
         result = respond(conn, question, settings=settings)
+        added = _cache_count(conn) - before
         trace = TraceRepo(conn).list_recent(limit=1)[0]
         total += trace.cost
+        total_tokens += trace.input_tokens + trace.output_tokens
         print(
-            "%-24s 形态=%-10s 引用=%d token=%d/%d 费用=%.6f 元"
+            "%-24s 形态=%-10s 引用=%d token=%d/%d 费用=%.6f 元 新增缓存=%d"
             % (
                 question,
                 result.answer.answer_mode,
@@ -67,11 +72,24 @@ def main() -> int:
                 trace.input_tokens,
                 trace.output_tokens,
                 trace.cost,
+                added,
             )
         )
-    print("\n四问合计：%.6f 元（估算值，仅供成本量级参考）" % total)
+    print(
+        "\n四问合计：token=%d，费用=%.6f 元（估算值，仅供成本量级参考）"
+        % (total_tokens, total)
+    )
+    if total_tokens and not total:
+        print(
+            "（费用为 0 是因为价目表里没有 %s：把 MA_LLM_PRICE_INPUT / MA_LLM_PRICE_OUTPUT "
+            "填进 .env 就能看到金额）" % settings.llm_model_answer
+        )
     conn.close()
     return 0
+
+
+def _cache_count(conn) -> int:
+    return int(conn.execute("SELECT COUNT(*) FROM llm_cache").fetchone()[0])
 
 
 if __name__ == "__main__":

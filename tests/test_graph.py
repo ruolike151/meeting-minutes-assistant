@@ -146,6 +146,46 @@ def test_run_writes_chat_trace_with_usage(conn) -> None:
     assert [node["name"] for node in latest.nodes][-1] == "persist"
 
 
+def test_llm_usage_reaches_chat_trace(conn) -> None:
+    """模型用量必须落到 trace：客户端记账与节点上下文共用同一个累加器。
+
+    这条守着 M3 首版踩过的坑——`CachedLLMClient` 把 token 记在自己的累加器里，
+    而节点上下文另起了一个，结果 trace 里永远是 0（真实调用其实发生了）。
+    """
+    from app.llm.cache import CachedLLMClient
+
+    answer_json = (
+        '{"lead": "李明提到了这个风险。", "items": [{"title": "出处", "text": "…",'
+        ' "evidence": ["m_20260911:s2"]}]}'
+    )
+    inner = FakeLLMClient(answer_json, cost_per_call=0.0009)
+    client = CachedLLMClient(inner, conn)
+    settings = replace(Settings.from_env(), text_encoder="hash", route_mode="rules")
+    respond(
+        conn,
+        "谁提到了活动弹窗的问题？",
+        settings=settings,
+        llm=client,
+        encoder=HashingEmbedder(dim=32),
+    )
+    latest = TraceRepo(conn).list_recent(limit=1)[0]
+    assert latest.input_tokens > 0, "真实调用发生了就必须记 token"
+    assert latest.output_tokens > 0
+    assert latest.cost > 0
+    assert latest.model, "trace 里要留下模型名，便于按模型算成本"
+    assert client.usage.cache_hits == 0
+
+    # 第二次同样的提问会命中缓存：token 记为 0，但仍然被记一笔"缓存命中"
+    respond(
+        conn,
+        "谁提到了活动弹窗的问题？",
+        settings=settings,
+        llm=client,
+        encoder=HashingEmbedder(dim=32),
+    )
+    assert client.usage.cache_hits == 1
+
+
 def test_graph_accepts_checkpointer(conn) -> None:
     """M4 会接持久化 checkpointer；M3 先用 InMemorySaver 证明接口留得下来。"""
     saver = InMemorySaver()

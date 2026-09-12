@@ -112,6 +112,7 @@ def build_context(
 ) -> NodeContext:
     """按配置组装节点上下文（模型与编码器都遵循"不可用就降级"的原则）。"""
     encoder_reason = ""
+    usage = None
     if settings is not None:
         if llm is None:
             try:
@@ -120,6 +121,9 @@ def build_context(
                 # 配置有问题（例如 provider 非法）时按"没有模型"处理：
                 # 回答照常产出，原因由 llm_mode_reason / 冒烟脚本暴露。
                 llm = FakeLLMClient("", available=False)
+        # 记账必须用客户端自己的累加器：用量是 `CachedLLMClient` 在调用时就地记下的，
+        # 另起一个 UsageTracker 会让 trace 里的 token / 费用永远是 0（M3 首版就踩了这个坑）。
+        usage = getattr(llm, "usage", None)
         if encoder is None:
             try:
                 selection = select_encoder(settings)
@@ -129,12 +133,15 @@ def build_context(
                 encoder = None
                 encoder_reason = "编码器不可用，已退回关键词检索：%s" % error
 
+    if usage is None and llm is not None:
+        usage = getattr(llm, "usage", None)
     context = NodeContext.from_settings(
         conn,
         settings,
         llm=llm,
         encoder=encoder,
         encoder_reason=encoder_reason,
+        usage=usage,
     )
 
     rounds = settings.history_rounds if settings is not None else DEFAULT_HISTORY_ROUNDS

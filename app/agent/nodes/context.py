@@ -56,6 +56,7 @@ class NodeContext:
         encoder_reason: str = "",
         history: list[ChatMessage] | None = None,
         history_summary: str = "",
+        usage: UsageTracker | None = None,
     ) -> "NodeContext":
         """按配置组装上下文；`settings=None` 时等价于"没有模型、没有向量"的 M1 行为。"""
         if settings is None:
@@ -66,6 +67,7 @@ class NodeContext:
                 encoder_reason=encoder_reason,
                 history=list(history or []),
                 history_summary=history_summary,
+                usage=usage or UsageTracker(),
             )
         return cls(
             conn=conn,
@@ -81,6 +83,7 @@ class NodeContext:
             model_answer=settings.llm_model_answer,
             model_minutes=settings.llm_model_minutes,
             retrieval_settings=settings.retrieval,
+            usage=usage or UsageTracker(),
         )
 
     # -- 读路径 ---------------------------------------------------------
