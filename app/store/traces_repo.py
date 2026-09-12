@@ -32,6 +32,10 @@ class ChatTrace:
     input_tokens: int = 0
     output_tokens: int = 0
     cost: float = 0.0
+    # M5：单轮延迟（节点耗时之和）与所属会议，用于 P95 与单场成本
+    latency_ms: int = 0
+    meeting_id: str | None = None
+    cached: bool = False
 
     @property
     def total_tokens(self) -> int:
@@ -54,6 +58,9 @@ class TraceRepo:
         input_tokens: int = 0,
         output_tokens: int = 0,
         cost: float = 0.0,
+        latency_ms: int = 0,
+        meeting_id: str | None = None,
+        cached: bool = False,
     ) -> ChatTrace:
         trace = ChatTrace(
             id=new_id("t"),
@@ -66,11 +73,15 @@ class TraceRepo:
             input_tokens=int(input_tokens),
             output_tokens=int(output_tokens),
             cost=float(cost),
+            latency_ms=int(latency_ms),
+            meeting_id=meeting_id,
+            cached=bool(cached),
         )
         self.conn.execute(
             "INSERT INTO chat_traces(id, conversation_id, intent, answer_mode, route_source,"
-            " nodes, model, input_tokens, output_tokens, cost, created_at)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            " nodes, model, input_tokens, output_tokens, cost, latency_ms, meeting_id,"
+            " cached, created_at)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 trace.id,
                 trace.conversation_id,
@@ -82,6 +93,9 @@ class TraceRepo:
                 trace.input_tokens,
                 trace.output_tokens,
                 trace.cost,
+                trace.latency_ms,
+                trace.meeting_id,
+                1 if trace.cached else 0,
                 iso(),
             ),
         )
@@ -103,8 +117,18 @@ class TraceRepo:
         row = self.conn.execute("SELECT COALESCE(SUM(cost), 0) AS total FROM chat_traces").fetchone()
         return float(row["total"]) if row else 0.0
 
+    def list_by_meeting(self, meeting_id: str, *, limit: int = 200) -> list[ChatTrace]:
+        """某场会议相关的问答 trace（单场会议成本的分子）。"""
+        rows = self.conn.execute(
+            "SELECT * FROM chat_traces WHERE meeting_id = ?"
+            " ORDER BY created_at DESC, rowid DESC LIMIT ?",
+            (meeting_id, int(limit)),
+        ).fetchall()
+        return [_to_trace(row) for row in rows]
+
 
 def _to_trace(row: sqlite3.Row) -> ChatTrace:
+    keys = row.keys()
     return ChatTrace(
         id=row["id"],
         conversation_id=row["conversation_id"],
@@ -116,4 +140,7 @@ def _to_trace(row: sqlite3.Row) -> ChatTrace:
         input_tokens=int(row["input_tokens"]),
         output_tokens=int(row["output_tokens"]),
         cost=float(row["cost"]),
+        latency_ms=int(row["latency_ms"] or 0) if "latency_ms" in keys else 0,
+        meeting_id=row["meeting_id"] if "meeting_id" in keys else None,
+        cached=bool(row["cached"]) if "cached" in keys else False,
     )

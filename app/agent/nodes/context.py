@@ -49,6 +49,9 @@ class NodeContext:
     # 节点因此不需要 import 框架（纪律：只有 graph.py 与 checkpoint.py 能 import），
     # 测试里注入一个记录调用的假函数就能断言"闸门确实挂起了"。
     interrupt_fn: Callable[[dict], object] | None = None
+    # 重排器（M5）：默认空实现，行为与 M3 一致；
+    # 由 `pipeline.build_context` 按 MA_RERANK_MODE 注入。
+    reranker: object | None = None
 
     @classmethod
     def from_settings(

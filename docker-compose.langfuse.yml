@@ -1,0 +1,48 @@
+# Langfuse 自托管（M5 T8，M5 决策 ③=A）。
+#
+#   docker compose -f docker-compose.langfuse.yml up -d
+#   # 首次打开 http://localhost:3000 注册并创建项目，拿到公钥 / 私钥
+#   # 写进 .env：MA_LANGFUSE_ENABLED=true / MA_LANGFUSE_PUBLIC_KEY / MA_LANGFUSE_SECRET_KEY
+#
+# 说明：
+# * 数据全部留在本机（Postgres + ClickHouse 都在这个 compose 里），符合"转写文本不外发"的取向；
+# * 起不来也不影响主流程：MA_LANGFUSE_ENABLED=false 时上报器是空实现，
+#   评测报告的数字全部来自本地 chat_traces（观测层只是展示）。
+
+services:
+  langfuse-web:
+    image: langfuse/langfuse:3
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@langfuse-db:5432/langfuse
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: clickhouse
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ma-local-dev-secret
+      SALT: ma-local-dev-salt
+    depends_on:
+      - langfuse-db
+      - langfuse-clickhouse
+
+  langfuse-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse_pg:/var/lib/postgresql/data
+
+  langfuse-clickhouse:
+    image: clickhouse/clickhouse-server:24-alpine
+    environment:
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: clickhouse
+    volumes:
+      - langfuse_clickhouse:/var/lib/clickhouse
+
+volumes:
+  langfuse_pg:
+  langfuse_clickhouse:

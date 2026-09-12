@@ -26,6 +26,8 @@ M3_REPORT = ROOT / 'docs' / 'M3-编排与检索评测报告.md'
 M4_PLAN = ROOT / 'docs' / 'M4-协同阶段实施计划.md'
 M5_PLAN = ROOT / 'docs' / 'M5-评测阶段实施计划.md'
 M4_REPORT = ROOT / 'docs' / 'M4-协同阶段验收报告.md'
+M5_REPORT = ROOT / 'docs' / 'M5-评测报告.md'
+M5_DASHBOARD = ROOT / 'docs' / 'M5-可观测看板.md'
 PROTO_README = ROOT / 'prototype' / 'README.md'
 
 PRODUCT_SECTIONS = [
@@ -155,6 +157,49 @@ M5_PLAN_KEYWORDS = [
     'Langfuse',
     'MA_EVAL_TOKEN_BUDGET',
     'MA_RERANK_MODE',
+]
+
+# M5 报告必须交代的：口径、数据缺口、消融、失败归因、局限
+M5_REPORT_SECTIONS = [
+    '## 1. 评测口径',
+    '## 2. 数据集规模与覆盖',
+    '## 3. 指标汇总',
+    '## 4. 消融矩阵',
+    '## 5. 失败明细与归因',
+    '## 6. 成本与延迟',
+    '## 7. 真实模型运行（待 Key）',
+    '## 8. 局限与下一步',
+]
+
+M5_MODULE_FILES = [
+    'app/eval/dataset.py',
+    'app/eval/metrics.py',
+    'app/eval/runner.py',
+    'app/eval/report.py',
+    'app/eval/judge.py',
+    'app/retrieval/rerank.py',
+    'app/observability/langfuse.py',
+    'app/agent/prompts/judge.md',
+    'scripts/run_eval_all.py',
+    'scripts/eval_minutes.py',
+    'scripts/eval_dialogue.py',
+    'docker-compose.langfuse.yml',
+    'samples/annotations/m5/retrieval_gold.json',
+    'samples/annotations/m5/route_gold.json',
+    'samples/annotations/m5/qa_gold.json',
+    'samples/annotations/m5/minutes_gold.json',
+    'samples/annotations/m5/review_gold.json',
+]
+
+M5_ENV_KEYS = [
+    'MA_EVAL_DATASET_DIR',
+    'MA_EVAL_TOKEN_BUDGET',
+    'MA_RERANK_MODE',
+    'MA_RERANK_MODEL_DIR',
+    'MA_RERANK_TOP_N',
+    'MA_JUDGE_MODE',
+    'MA_LANGFUSE_ENABLED',
+    'MA_LANGFUSE_HOST',
 ]
 
 # M4 验收报告必须覆盖的章节（与 M3 报告同款约束：报告要有口径、结论与偏差）
@@ -449,6 +494,29 @@ def run() -> list[str]:
     for key in ('MA_CHECKPOINT_BACKEND', 'MA_REVIEW_MODE', 'MA_REVIEW_CONFIDENCE'):
         check('M4 开关写在 config.py ' + key, key in config_source)
         check('M4 开关写在 .env.example ' + key, key in env_example)
+
+    print('[16] M5 评测报告与实现一致')
+    if not M5_REPORT.is_file():
+        check('M5 评测报告存在', False, str(M5_REPORT))
+        return list(FAILURES)
+    m5_report = read(M5_REPORT)
+    for heading in M5_REPORT_SECTIONS:
+        check('M5 报告含章节 ' + heading, heading in m5_report)
+    check('技术方案标记 M5 已完成', 'M5 评测 ✅' in tech_status)
+    check('README 链接 M5 评测报告', 'M5-评测报告.md' in readme_root)
+    check('M5 计划标记实施完成', '已实施完成' in m5_plan)
+    check('可观测看板文档存在', M5_DASHBOARD.is_file())
+    missing_modules = [path for path in M5_MODULE_FILES if not (ROOT / path).is_file()]
+    check('M5 计划提到的模块都已落地', not missing_modules,
+          '缺失：' + '、'.join(missing_modules))
+    missing_env = [key for key in M5_ENV_KEYS if key not in config_source]
+    check('M5 开关都能在 config.py 里找到', not missing_env, '缺失：' + '、'.join(missing_env))
+    missing_example = [key for key in M5_ENV_KEYS if key not in env_example]
+    check('.env.example 覆盖全部 M5 开关', not missing_example,
+          '缺失：' + '、'.join(missing_example))
+    check('M5 报告标注数据来源缺口',
+          '真实会议录音' in m5_report and '待用户提供' in m5_report)
+    check('M5 报告给出重排结论', '重排结论' in m5_report)
 
     return list(FAILURES)
 

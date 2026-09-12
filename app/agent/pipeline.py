@@ -28,7 +28,9 @@ from app.config import DEFAULT_HISTORY_ROUNDS, Settings
 from app.llm.client import LLMClient, LLMUnavailable
 from app.llm.factory import get_client
 from app.llm.fake import FakeLLMClient
+from app.observability.langfuse import build_sink
 from app.retrieval.encoder import EncoderUnavailable, TextEncoder, select_encoder
+from app.retrieval.rerank import build_reranker
 from app.store.repos import new_id
 
 
@@ -107,6 +109,19 @@ def stream(
     if result is None:
         raise PipelineError("编排链路没有产出结果")
 
+    # 可观测（M5）：把这一轮上报到外部服务；未启用时是空实现。
+    # 上报失败只记日志，绝不影响用户拿到的答案。
+    usage_payload = context.usage.to_dict() if context.usage is not None else {}
+    scope_ids = list(result.answer.scope_meeting_ids)
+    build_sink(settings).record(
+        name="chat",
+        thread_id=result.conversation_id,
+        nodes=list(result.answer.trace),
+        usage=usage_payload,
+        cost=float(usage_payload.get("cost") or 0.0),
+        meeting_id=scope_ids[0] if len(scope_ids) == 1 else None,
+    )
+
     for citation in result.answer.citations:
         yield "citation", citation.model_dump(mode="json")
     yield "delta", {"text": result.answer.lead}
@@ -154,6 +169,8 @@ def build_context(
         encoder_reason=encoder_reason,
         usage=usage,
     )
+    # 重排（M5）：默认 NoReranker，行为与 M3 一致；开启可按 MA_RERANK_MODE 生效
+    context.reranker = build_reranker(settings)
 
     rounds = settings.history_rounds if settings is not None else DEFAULT_HISTORY_ROUNDS
     if settings is not None and conversation_id:

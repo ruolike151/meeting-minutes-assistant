@@ -1,0 +1,19 @@
+{
+  "version": "m5-2026-09-12.1",
+  "updated_at": "2026-09-12",
+  "source": "sample",
+  "notes": [
+    "待确认条目的期望处理动作：样例会议里的低置信度待办都应由人工确认（补负责人或时间）。",
+    "真实会议素材到位后，这里应补上'应该被丢弃'的噪声条目，用于度量驳回率。"
+  ],
+  "cases": [
+    {"item_id": "m_20260911:a4", "kind": "action_item", "expected_action": "confirm",
+     "note": "负责人明确（陈静），只缺完成时间"},
+    {"item_id": "m_20260909:a2", "kind": "action_item", "expected_action": "confirm",
+     "note": "负责人明确（王强），时间随迭代排期"},
+    {"item_id": "m_20260904:a2", "kind": "action_item", "expected_action": "confirm",
+     "note": "负责人明确（李明），时间未定"},
+    {"item_id": "m_20260904:a3", "kind": "action_item", "expected_action": "edit",
+     "note": "会上没有指定负责人，应由人工补录"}
+  ]
+}

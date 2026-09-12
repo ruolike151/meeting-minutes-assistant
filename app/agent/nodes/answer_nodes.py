@@ -222,6 +222,13 @@ def finalize_node(state: AgentState, context: NodeContext) -> dict:
     ConversationRepo(context.conn).append(result.conversation_id, result.assistant_message)
 
     usage = context.usage.to_dict() if context.usage is not None else {}
+    # M5：把延迟与会议关联写进 trace，评测才能算 P95 与单场成本。
+    # 延迟取各节点耗时之和：它包含检索、模型与落库，是"用户等了多久"的近似。
+    latency_ms = int(sum(step.ms for step in trace))
+    # 范围唯一时把会议记到 trace 上；跨会议问答没有单一归属，记为 None
+    meeting_ids = [meeting.id for meeting in meetings]
+    trace_meeting = meeting_ids[0] if len(meeting_ids) == 1 else None
+    cached = bool(usage.get("calls")) and usage.get("cache_hits") == usage.get("calls")
     TraceRepo(context.conn).save(
         conversation_id=result.conversation_id,
         intent=answer.intent,
@@ -232,6 +239,9 @@ def finalize_node(state: AgentState, context: NodeContext) -> dict:
         input_tokens=int(usage.get("input_tokens") or 0),
         output_tokens=int(usage.get("output_tokens") or 0),
         cost=float(usage.get("cost") or 0.0),
+        latency_ms=latency_ms,
+        meeting_id=trace_meeting,
+        cached=cached,
     )
     return {
         "answer": answer,

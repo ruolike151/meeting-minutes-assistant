@@ -27,4 +27,5 @@ pytest==9.1.1
 httpx==0.28.1              # FastAPI TestClient 的传输层
 
 # 后续里程碑按需引入：
-#   langfuse                     M5 调用链与成本观测
+#   langfuse                     M5 调用链与成本观测（放 requirements-observability.txt，
+#                                未启用时主路径不 import 它）

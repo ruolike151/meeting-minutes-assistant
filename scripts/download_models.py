@@ -37,6 +37,11 @@ SPEAKER_DIRNAME = "speechbrain-spkrec-ecapa-voxceleb"
 EMBEDDING_REPO = "BAAI/bge-small-zh-v1.5"
 EMBEDDING_DIRNAME = "bge-small-zh-v1.5"
 
+# M5：重排模型（cross-encoder，约 1.1GB）。默认不下载——
+# 只有显式加 --rerank 才拉，避免只做检索实验的机器白下 1.1GB。
+RERANK_REPO = "BAAI/bge-reranker-base"
+RERANK_DIRNAME = "bge-reranker-base"
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="下载 M2 感知层模型权重到 model/")
@@ -50,6 +55,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--skip-speaker", action="store_true", help="跳过声纹模型")
     parser.add_argument("--skip-embedding", action="store_true", help="跳过文本向量模型")
+    parser.add_argument("--rerank", action="store_true", help="下载重排模型（约 1.1GB）")
     parser.add_argument(
         "--embedding-only",
         action="store_true",
@@ -114,6 +120,14 @@ def main() -> int:
         download(
             EMBEDDING_REPO,
             model_dir / EMBEDDING_DIRNAME,
+            force=args.force,
+            required=("model.safetensors",),
+        )
+
+    if args.rerank:
+        download(
+            RERANK_REPO,
+            model_dir / RERANK_DIRNAME,
             force=args.force,
             required=("model.safetensors",),
         )

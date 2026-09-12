@@ -102,6 +102,42 @@ M1 的规则路由与关键词检索是**可替换的临时实现**，
 
 ---
 
+## M4 交付了什么（协同 / 人在回路）
+
+按《技术方案》17 节，M4 的目标是「checkpointer + interrupt 支撑待确认区；证据回跳；
+人工修改落 override 表」。计划见 [`docs/M4-协同阶段实施计划.md`](docs/M4-协同阶段实施计划.md)，
+验收见 [`docs/M4-协同阶段验收报告.md`](docs/M4-协同阶段验收报告.md)。
+
+| 交付项 | 落地位置 | 说明 |
+| --- | --- | --- |
+| 挂起与恢复 | `app/agent/graph.py`、`app/agent/checkpoint.py` | 新增 minutes 图：生成 → 校验 → `review_gate(interrupt)` → 收尾；状态落 `SqliteSaver`（`data/checkpoints.sqlite`） |
+| 恢复链路 | `app/agent/review.py`、`app/api/review.py` | 确认最后一条 → `Command(resume=…)` 恢复图 → 会议转 `processed`；没有检查点时降级为直接收尾 |
+| 待确认区 | `app/store/minutes_repo.py::pending_items` | 待办 + 低置信度决议；`confirm` / `dismiss` / `edit` 三种动作 |
+| 人工修改留痕 | `action_item_overrides` + `review_events` | 结论与流水分开存；重新生成纪要不会覆盖人工结论 |
+| 证据回跳 | `GET /api/meetings/{id}/audio`、`web/panel.js` | 点引用 → 原声定位高亮 → 播放器从该句起点播放；支持跨会议跳转 |
+| 状态机 | `meetings.status` | `processing → awaiting_review → processed`，与会议库徽标同源 |
+
+**实测**：全量 **375 项测试通过、1 项跳过、0 失败**；挂起、恢复、降级三条路径各有用例。
+
+---
+
+## M5 交付了什么（评测）
+
+按《产品设计文档》8 节，M5 要把每一项指标跑成可复现的数字。计划见
+[`docs/M5-评测阶段实施计划.md`](docs/M5-评测阶段实施计划.md)，
+数字、失败归因与缺口见 [`docs/M5-评测报告.md`](docs/M5-评测报告.md)。
+
+| 交付项 | 落地位置 | 说明 |
+| --- | --- | --- |
+| 数据集契约 | `app/eval/dataset.py`、`samples/annotations/m5/` | 56 检索 / 31 路由 / 22 问答 / 3 场纪要金标；金标存在性、拒答互斥、会议覆盖三类校验 |
+| 指标库 | `app/eval/metrics.py` | P/R/F1、Recall@k、MRR、准确率、混淆矩阵、拒答两方向、分位数、kappa、成本汇总 |
+| 运行器与报告 | `app/eval/runner.py`、`app/eval/report.py` | 一次运行产出 `raw.json` / `metrics.json` / `report.md`；离线基线无网络无 Key |
+| 重排消融 | `app/retrieval/rerank.py` | cross-encoder 可插拔、不可用回落、原因可见；实测 MRR 0.697 → 0.792（+13.6%） |
+| 可观测 | `app/observability/langfuse.py`、`docker-compose.langfuse.yml` | 未启用时**不 import** langfuse；上报失败只记日志；口径见 [`docs/M5-可观测看板.md`](docs/M5-可观测看板.md) |
+| 一键复现 | `scripts/run_eval_all.py` | `--offline` / `--cache-first` / `--live` / `--dry-run` / `--rerank` |
+
+---
+
 ## 快速开始
 
 ### 0. 配置 `.env`（可选，不配也能跑）
@@ -220,6 +256,27 @@ $env:MA_RUN_LLM_SMOKE = "1"        # 没有这个开关，脚本不会发任何�
 .\meeting_assistant\Scripts\python.exe scripts\warm_cache.py
 ```
 
+### 跑一遍全部评测（M5，不需要 Key）
+
+```powershell
+# 离线基线：12 项指标 + 重排消融，全程无网络、无模型
+.\meeting_assistant\Scripts\python.exe scripts\run_eval_all.py --offline --encoder hash --rerank
+
+# 只跑分项
+.\meeting_assistant\Scripts\python.exe scripts\eval_minutes.py      # 纪要质量
+.\meeting_assistant\Scripts\python.exe scripts\eval_dialogue.py     # 路由与多轮
+
+# 真实模型（需要 .env 里的 MA_LLM_API_KEY，先 --dry-run 看预算）
+.\meeting_assistant\Scripts\python.exe scripts\run_eval_all.py --live --judge llm --dry-run
+.\meeting_assistant\Scripts\python.exe scripts\run_eval_all.py --live --judge llm
+
+# 开启重排需要先下权重（约 1.1GB）
+.\meeting_assistant\Scripts\python.exe scripts\download_models.py --rerank --skip-embedding --skip-speaker
+```
+
+产物落在 `data/eval/<run_id>/`（`raw.json` 逐条明细 / `metrics.json` 汇总 /
+`report.md` 报告）；当前实测数字与缺口见 [`docs/M5-评测报告.md`](docs/M5-评测报告.md)。
+
 单场会议重新生成纪要（换了模型或改了提示词时不用重新上传音频）：
 
 ```powershell
@@ -323,4 +380,4 @@ M1 的口径：命中片段覆盖率 < 0.34 即拒答。
 | M2 感知 ✅ | 接入真实转写与声纹，`offline.py` 降级为测试后端；实测窗口级准确率 93.75%、宏平均召回 92.86%、RTF 0.09（GPU）/ 0.48（CPU） | `app/perception/`、`scripts/` |
 | M3 编排与检索 ✅ | LangGraph 状态图（路由/澄清/拒答/重试）、向量召回 + RRF + 双闸拒答、LLM 合成与纪要生成；实测 Recall@8 1.000 / MRR 0.881 / 拒答正确率 1.000 → 计划见 [`docs/M3-编排与检索阶段实施计划.md`](docs/M3-编排与检索阶段实施计划.md)，数字见 [`docs/M3-编排与检索评测报告.md`](docs/M3-编排与检索评测报告.md) | `app/agent/`、`app/retrieval/` |
 | M4 协同 ✅ | checkpointer + interrupt 支撑待确认区挂起恢复、证据回跳、override 完整交互 → 计划见 [`docs/M4-协同阶段实施计划.md`](docs/M4-协同阶段实施计划.md)，结果见 [`docs/M4-协同阶段验收报告.md`](docs/M4-协同阶段验收报告.md) | `app/agent/`、`web/` |
-| M5 评测 | 标注集、12 项指标、重排消融、Langfuse 报告 → 计划见 [`docs/M5-评测阶段实施计划.md`](docs/M5-评测阶段实施计划.md)（待评审，决策见该文档第 10 节） | `tests/`、`docs/` |
+| M5 评测 ✅ | 标注集（56 检索 / 31 路由 / 22 问答 / 3 场纪要金标）、12 项指标、重排消融（MRR +13.6%）、Langfuse 适配与一键复现 → 计划见 [`docs/M5-评测阶段实施计划.md`](docs/M5-评测阶段实施计划.md)，数字与缺口见 [`docs/M5-评测报告.md`](docs/M5-评测报告.md) | `app/eval/`、`scripts/`、`docs/` |

@@ -3,6 +3,7 @@
 迁移用 `PRAGMA user_version` 做版本号，逐条叠加：
 v1 骨架（M1）、v2 声纹与任务（M2）、v3 片段向量与对话 trace（M3）。
 v4 人工确认审计与会议状态（M4）。
+v5 评测所需的延迟与会议关联（M5）：`chat_traces` 补列 + `eval_runs` 摘要。
 
 每一项要么是一段 SQL（`executescript`），要么是一个函数——因为 v3 里的
 `ALTER TABLE conversations ADD COLUMN summary` 需要先判断列是否存在，
@@ -210,6 +211,21 @@ CREATE INDEX IF NOT EXISTS idx_review_events_item
     ON review_events(item_id, created_at);
 """
 
+# v5：评测要的两个量不在 v3 的表里——单轮延迟（P95）与问答所属会议（单场成本）。
+# 逐条明细仍然落 JSON 文件（体积大、结构随指标变），库里只存运行摘要。
+SCHEMA_V5 = """
+CREATE TABLE IF NOT EXISTS eval_runs(
+    id         TEXT PRIMARY KEY,
+    run_type   TEXT NOT NULL,
+    dataset    TEXT NOT NULL,
+    config     TEXT NOT NULL,
+    metrics    TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_eval_runs_created ON eval_runs(created_at);
+"""
+
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
     """幂等加列：SQLite 不支持 `ADD COLUMN IF NOT EXISTS`，只能先问 PRAGMA。"""
@@ -230,6 +246,15 @@ def _migrate_v4(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_V4)
 
 
+def _migrate_v5(conn: sqlite3.Connection) -> None:
+    conn.executescript(SCHEMA_V5)
+    # 一行的延迟 = 该轮各节点耗时之和；会议关联用于"单场会议成本"
+    _ensure_column(conn, "chat_traces", "latency_ms", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "chat_traces", "meeting_id", "TEXT")
+    # 整轮是否全部命中缓存（缓存命中率的分母/分子，M5 T7）
+    _ensure_column(conn, "chat_traces", "cached", "INTEGER NOT NULL DEFAULT 0")
+
+
 # 一个迁移项要么是 SQL 脚本，要么是函数（需要条件判断时用函数）
 MigrationStep = str | Callable[[sqlite3.Connection], None]
 
@@ -238,6 +263,7 @@ MIGRATIONS: list[tuple[int, MigrationStep]] = [
     (2, SCHEMA_V2),
     (3, _migrate_v3),
     (4, _migrate_v4),
+    (5, _migrate_v5),
 ]
 
 

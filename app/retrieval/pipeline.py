@@ -76,6 +76,9 @@ class RetrievalResult:
     最终 `hits` 是按时间排序的上下文（相邻片段会插进来），
     评测 Recall@k / MRR 需要的是**排名**，因此单独留一份。
     """
+    reranked: bool = False
+    rerank_reason: str = ""
+    rerank_candidates: int = 0
 
     @property
     def top_score(self) -> float:
@@ -104,6 +107,7 @@ def retrieve(
     window: int = NEIGHBOR_WINDOW,
     min_coverage: float = MIN_COVERAGE,
     char_budget: int = TOKEN_BUDGET_CHARS,
+    reranker: object | None = None,
 ) -> RetrievalResult:
     """检索并组装证据上下文。
 
@@ -179,6 +183,11 @@ def retrieve(
     if not fused:  # 理论上不会发生：上面已保证至少一路有候选
         fused = {key: 0.0 for key in keyword_keys + vector_keys}
 
+    # ⑥ 重排（M5）：候选池先放宽到 top-N，打分后再截到 top-k。
+    # 重排器为空实现时 top_n=0，行为与 M3 逐字段一致。
+    rerank_top_n = int(getattr(reranker, "top_n", 0) or 0) if reranker else 0
+    candidate_limit = max(settings.top_k, rerank_top_n)
+
     segment_repo = SegmentRepo(conn)
     primary: list[RetrievedSegment] = []
     seen: set[tuple[str, str]] = set()
@@ -198,10 +207,21 @@ def retrieve(
                 source=_source_of(key, keyword_scores, vector_scores),
             )
         )
-        if len(primary) >= settings.top_k:
+        if len(primary) >= candidate_limit:
             break
 
-    matched = [t for t in tokens if any(t in h.segment.text for h in primary)]
+    reranked = False
+    rerank_reason = ""
+    rerank_candidates = len(primary)
+    # 拒答口径锚在重排之前：覆盖率用融合后的候选算，换重排模型不改变拒答行为
+    pre_rerank = list(primary)
+    if reranker is not None and candidate_limit > settings.top_k and primary:
+        reranked_primary = reranker.rerank(query, primary, top_k=settings.top_k)
+        reranked = reranked_primary != primary[: settings.top_k]
+        rerank_reason = str(getattr(reranker, "reason", "") or "")
+        primary = reranked_primary
+
+    matched = [t for t in tokens if any(t in h.segment.text for h in pre_rerank)]
     missing = [t for t in tokens if t not in matched]
     coverage = round(len(matched) / len(tokens), 4)
     best_cosine = max(vector_scores.values()) if vector_scores else None
@@ -237,6 +257,9 @@ def retrieve(
             keyword_hits=len(keyword_keys),
             vector_hits=len(vector_keys),
             ranked_keys=[(item.segment.meeting_id, item.segment.id) for item in primary],
+            reranked=reranked,
+            rerank_reason=rerank_reason,
+            rerank_candidates=rerank_candidates,
         )
 
     assembled = _assemble(
@@ -257,6 +280,9 @@ def retrieve(
         keyword_hits=len(keyword_keys),
         vector_hits=len(vector_keys),
         ranked_keys=[(item.segment.meeting_id, item.segment.id) for item in primary],
+        reranked=reranked,
+        rerank_reason=rerank_reason,
+        rerank_candidates=rerank_candidates,
     )
 
 

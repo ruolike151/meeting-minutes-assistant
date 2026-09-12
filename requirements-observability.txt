@@ -1,0 +1,14 @@
+# 会议纪要助手 · 可观测依赖（M5 T8，可选）
+#
+# 安装：
+#   meeting_assistant\Scripts\python.exe -m pip install -r requirements-observability.txt
+#
+# 作用：把每轮图运行上报到 Langfuse（自托管或 Cloud）。
+# 不装、不启用（MA_LANGFUSE_ENABLED=false）时主路径完全不 import 它，
+# 因此约束 C3 不受影响：没装这个包也能跑通全部测试与离线评测。
+#
+# 自托管：
+#   docker compose -f docker-compose.langfuse.yml up -d
+#   然后在 .env 里设置 MA_LANGFUSE_ENABLED=true 与公钥/私钥。
+
+langfuse==4.15.2

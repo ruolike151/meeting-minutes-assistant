@@ -28,6 +28,8 @@ def retrieve_node(state: AgentState, context: NodeContext) -> dict:
         date_to=date_to,
         encoder=context.encoder,
         config=context.retrieval_settings,
+        # M5：重排默认关闭（NoReranker），开启时按 MA_RERANK_MODE 生效
+        reranker=context.reranker,
     )
     detail = "命中 %d 条（关键词 %d / 向量 %d）" % (
         len(result.hits),
@@ -36,6 +38,10 @@ def retrieve_node(state: AgentState, context: NodeContext) -> dict:
     )
     if result.is_hybrid:
         detail += "｜编码器 %s" % result.encoder
+    if result.reranked:
+        detail += "｜重排候选 %d" % result.rerank_candidates
+    if result.rerank_reason:
+        detail += "｜%s" % result.rerank_reason
     if context.encoder_reason:
         detail += "｜%s" % context.encoder_reason
     trace = append_trace(state, "retrieve", started, detail)

@@ -19,7 +19,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -104,6 +104,16 @@ DEFAULT_REVIEW_MODE = "gate"             # gate（挂起等人工确认）| off�
 VALID_REVIEW_MODES = ("gate", "off")
 DEFAULT_REVIEW_CONFIDENCE = 0.75         # 低于该置信度的决议 / 待办进入待确认区
 DEFAULT_REVIEW_MAX_ITEMS = 20            # 单场会议待确认条目上限
+
+# -- 评测（M5）---------------------------------------------------------
+DEFAULT_RERANK_MODE = "off"              # off | cross_encoder
+VALID_RERANK_MODES = ("off", "cross_encoder")
+DEFAULT_RERANK_TOP_N = 20                # 进入重排的候选数
+DEFAULT_RERANK_MODEL_DIR = "bge-reranker-base"
+DEFAULT_JUDGE_MODE = "rule"              # rule | llm（证据与结论判定的消融开关）
+VALID_JUDGE_MODES = ("rule", "llm")
+DEFAULT_EVAL_TOKEN_BUDGET = 2_000_000    # 真实模型评测的 token 上限
+DEFAULT_LANGFUSE_HOST = "http://localhost:3000"
 
 # -- 感知层参数（M2）---------------------------------------------------
 DEFAULT_PERCEPTION_BACKEND = "offline"          # offline | local | auto
@@ -270,6 +280,19 @@ class Settings:
     review_confidence: float = DEFAULT_REVIEW_CONFIDENCE
     review_max_items: int = DEFAULT_REVIEW_MAX_ITEMS
 
+    # -- 评测（M5）--
+    eval_dataset_dir: Path = ROOT / "samples" / "annotations" / "m5"
+    eval_output_dir: Path = ROOT / "data" / "eval"
+    eval_token_budget: int = DEFAULT_EVAL_TOKEN_BUDGET
+    rerank_mode: str = DEFAULT_RERANK_MODE            # off | cross_encoder
+    rerank_model_dir: str = DEFAULT_RERANK_MODEL_DIR
+    rerank_top_n: int = DEFAULT_RERANK_TOP_N
+    judge_mode: str = DEFAULT_JUDGE_MODE              # rule | llm
+    langfuse_enabled: bool = False
+    langfuse_host: str = DEFAULT_LANGFUSE_HOST
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+
     @classmethod
     def from_env(
         cls,
@@ -347,6 +370,26 @@ class Settings:
                 "MA_REVIEW_CONFIDENCE", DEFAULT_REVIEW_CONFIDENCE
             ),
             review_max_items=_env_int("MA_REVIEW_MAX_ITEMS", DEFAULT_REVIEW_MAX_ITEMS),
+            eval_dataset_dir=Path(
+                _env("MA_EVAL_DATASET_DIR", str(ROOT / "samples" / "annotations" / "m5"))
+            ).expanduser(),
+            eval_output_dir=Path(
+                _env("MA_EVAL_OUTPUT_DIR", str(base / "eval"))
+            ).expanduser(),
+            eval_token_budget=_env_int("MA_EVAL_TOKEN_BUDGET", DEFAULT_EVAL_TOKEN_BUDGET),
+            rerank_mode=_env_choice(
+                "MA_RERANK_MODE", DEFAULT_RERANK_MODE, VALID_RERANK_MODES
+            ),
+            # 与文本向量同款：默认落在项目根的 model/ 下（而不是当前工作目录）
+            rerank_model_dir=_env(
+                "MA_RERANK_MODEL_DIR", str(ROOT / "model" / DEFAULT_RERANK_MODEL_DIR)
+            ),
+            rerank_top_n=_env_int("MA_RERANK_TOP_N", DEFAULT_RERANK_TOP_N),
+            judge_mode=_env_choice("MA_JUDGE_MODE", DEFAULT_JUDGE_MODE, VALID_JUDGE_MODES),
+            langfuse_enabled=_env_flag("MA_LANGFUSE_ENABLED", False),
+            langfuse_host=_env("MA_LANGFUSE_HOST", DEFAULT_LANGFUSE_HOST),
+            langfuse_public_key=_env("MA_LANGFUSE_PUBLIC_KEY", ""),
+            langfuse_secret_key=_env("MA_LANGFUSE_SECRET_KEY", ""),
         )
 
     # -- 派生路径 ---------------------------------------------------------
@@ -408,6 +451,29 @@ class Settings:
         raw = Path(self.checkpoint_path)
         return raw if raw.is_absolute() else ROOT / raw
 
+    @property
+    def resolved_rerank_model_dir(self) -> Path:
+        """重排模型权重目录（M5）：相对路径按项目根解析。"""
+        raw = Path(self.rerank_model_dir)
+        return raw if raw.is_absolute() else ROOT / raw
+
     def ensure_dirs(self) -> None:
         for path in (self.data_dir, self.audio_dir, self.export_dir):
             path.mkdir(parents=True, exist_ok=True)
+
+    def for_data_dir(self, data_dir: str | os.PathLike[str]) -> "Settings":
+        """换一个数据目录的副本（评测每次运行都用全新目录，不污染 data/）。
+
+        派生路径（库文件、音频、导出、检查点、评测产物）必须一起换掉——
+        只改 `data_dir` 会让写入落回原目录，评测之间互相污染。
+        """
+        base = Path(data_dir).expanduser().absolute()
+        return replace(
+            self,
+            data_dir=base,
+            db_path=base / DB_FILENAME,
+            audio_dir=base / "audio",
+            export_dir=base / "export",
+            checkpoint_path=base / "checkpoints.sqlite",
+            eval_output_dir=base / "eval",
+        )
