@@ -275,3 +275,19 @@ def test_conversation_list_supports_switching(client) -> None:
     # limit 生效，且越界值被 422 拦下（不给前端塞一个拖垮库的查询）
     assert len(client.get("/api/conversations", params={"limit": 1}).json()) == 1
     assert client.get("/api/conversations", params={"limit": 0}).status_code == 422
+
+
+def test_static_assets_revalidate_every_time(client) -> None:
+    """静态资源带 no-cache：改了前端刷新就能生效，不被启发式缓存挡住。
+
+    踩过的坑：StaticFiles 默认不发缓存头，浏览器直接吃缓存，
+    "服务端已经是新文件、页面还是旧行为"，排查了半天。
+    """
+    page = client.get("/")
+    assert page.status_code == 200
+    assert page.headers["cache-control"] == "no-cache"
+    script = client.get("/chat.js")
+    assert script.status_code == 200
+    assert script.headers["cache-control"] == "no-cache"
+    # API 响应不受影响（数据本来就该由业务决定缓存策略）
+    assert "cache-control" not in client.get("/api/meetings").headers

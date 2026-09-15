@@ -24,10 +24,26 @@ export async function loadLibrary(params = {}) {
    两边通过自定义事件解耦，避免 panel ↔ chat 互相 import。 */
 
 export async function loadConversations() {
-  const items = await api.listConversations();
-  store.conversations = items;
-  renderConversationList();
-  return items;
+  try {
+    const items = await api.listConversations();
+    store.conversations = items;
+    renderConversationList();
+    return items;
+  } catch (error) {
+    // 不要把"加载失败"伪装成"还没有对话"——两者要能一眼分开
+    // （最典型的失败是服务还是改动前的旧进程，接口 404）
+    store.conversations = [];
+    const list = $('#conversationList');
+    if (list) list.innerHTML = '';
+    const empty = $('#convEmpty');
+    if (empty) {
+      empty.hidden = false;
+      empty.textContent = '会话列表加载失败：' + error.message +
+        '（若刚更新过代码，请重启服务并刷新页面）';
+    }
+    $('#conversationCount').textContent = '0';
+    return [];
+  }
 }
 
 export function renderConversationList() {
@@ -44,7 +60,10 @@ export function renderConversationList() {
       ' · ' + item.message_count + ' 条</span></button></li>';
   }).join('');
   $('#conversationCount').textContent = String(items.length);
-  $('#convEmpty').hidden = items.length > 0;
+  const empty = $('#convEmpty');
+  // 恢复默认文案：上一次可能是"加载失败"写进去的
+  empty.textContent = '还没有对话记录，问一句就有';
+  empty.hidden = items.length > 0;
 }
 
 function shortTime(value) {

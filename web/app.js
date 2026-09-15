@@ -130,6 +130,10 @@ function bindEvents() {
 
   $('#meetingSearch').addEventListener('input', renderMeetingList);
   $('#conversationList').addEventListener('click', handleConversationClick);
+  // 切回本窗口时刷新会话列表：别的标签页里新开的对话也能看到
+  window.addEventListener('focus', () => {
+    loadConversations().catch(() => {});
+  });
   $('#meetingList').addEventListener('click', async (event) => {
     const button = event.target.closest('.mtg');
     if (!button) return;

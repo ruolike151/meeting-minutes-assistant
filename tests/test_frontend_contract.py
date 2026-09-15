@@ -161,7 +161,9 @@ def test_conversation_switcher_is_wired() -> None:
     chat = read("chat.js")
     assert "openConversation" in chat and "ma:open-conversation" in chat
     assert "loadConversations" in chat, "发完消息要刷新会话列表"
-    assert "conversationList" in read("app.js"), "app.js 要绑定列表点击"
+    app = read("app.js")
+    assert "conversationList" in app, "app.js 要绑定列表点击"
+    assert "'focus'" in app, "窗口重新聚焦时要刷新会话列表"
 
 
 def test_audio_player_respects_availability() -> None:
@@ -180,3 +182,12 @@ def test_store_initialises_messages_array() -> None:
     """
     source = read("store.js")
     assert "messages: []" in source, "store 必须初始化 messages: []"
+
+
+def test_conversation_load_failure_is_visible() -> None:
+    """加载失败要和"还没有对话"区分开，并提示可能是旧进程。"""
+    source = read("panel.js")
+    body = function_body(source, "loadConversations")
+    assert "catch" in body, "loadConversations 要兜住异常"
+    assert "会话列表加载失败" in body
+    assert "重启服务" in body
