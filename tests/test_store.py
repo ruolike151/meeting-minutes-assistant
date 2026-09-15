@@ -105,6 +105,67 @@ def test_speakers_use_letter_codes_only(conn) -> None:
             assert re.fullmatch(r"[A-Z]", participant["name"]), participant
 
 
+def test_rename_speakers_migrates_existing_rows(tmp_path) -> None:
+    """老库原地改名：只动显示名，幂等，声纹库撞名时跳过并报告。"""
+    from datetime import date
+
+    from app.config import Settings
+    from app.domain.models import Meeting, Participant
+    from app.store.db import open_db
+    from app.store.speaker_names import rename_speakers
+    from app.store.repos import MeetingRepo
+
+    settings = Settings.from_env(tmp_path / "data")
+    conn = open_db(settings)
+    try:
+        MeetingRepo(conn).create(
+            Meeting(
+                id="m_legacy",
+                title="老数据",
+                date=date(2026, 9, 1),
+                duration=60,
+                status="processed",
+                participants=[
+                    Participant(id="p_wang", name="王强", role="前端开发"),
+                    Participant(id="p_chen", name="陈静", role="运营"),
+                ],
+            )
+        )
+        conn.execute(
+            "INSERT INTO speakers(id, name, role, encoder, dim, centroid, created_at, updated_at)"
+            " VALUES('p_wang', '王强', '前端开发', 'ecapa', 192, NULL, '2026-09-01', '2026-09-01')"
+        )
+        conn.commit()
+
+        preview = rename_speakers(conn, dry_run=True)
+        assert preview["participants"] == 2
+        # dry-run 不写库
+        names = {
+            row["name"]
+            for row in conn.execute("SELECT name FROM participants WHERE meeting_id='m_legacy'")
+        }
+        assert names == {"王强", "陈静"}
+
+        result = rename_speakers(conn)
+        assert result["participants"] == 2
+        assert result["speakers"] == 1
+        names = {
+            row["name"]
+            for row in conn.execute("SELECT name FROM participants WHERE meeting_id='m_legacy'")
+        }
+        assert names == {"C", "A"}
+        assert (
+            conn.execute("SELECT name FROM speakers WHERE id='p_wang'").fetchone()["name"]
+            == "C"
+        )
+
+        # 幂等：再跑一次什么都不改
+        again = rename_speakers(conn)
+        assert again == {"participants": 0, "speakers": 0, "skipped": []}
+    finally:
+        conn.close()
+
+
 def test_participants_carry_speaking_seconds(conn) -> None:
     meeting = MeetingRepo(conn).get("m_20260911")
     assert meeting is not None
