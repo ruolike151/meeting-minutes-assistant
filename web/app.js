@@ -10,8 +10,8 @@ import {
   updateSendState,
 } from './chat.js';
 import {
-  closePanel, handlePanelClick, loadDetail, loadLibrary, openPanel, openSegment, renderMeetingList,
-  setTab,
+  closePanel, handleConversationClick, handlePanelClick, loadConversations, loadDetail, loadLibrary,
+  openPanel, openSegment, renderMeetingList, setTab,
 } from './panel.js';
 import { meetingById, store } from './store.js';
 import { $, ICON, escapeHtml, toast } from './ui.js';
@@ -126,9 +126,10 @@ function bindEvents() {
   $('#exportBtn').addEventListener('click', toggleExportMenu);
   $('#panelClose').addEventListener('click', closePanel);
   $('#speakerBtn').addEventListener('click', () =>
-    toast('直接问「C 答应了哪些事」，发言人汇总走后端 query_speaker 工具'));
+    toast('直接问「有哪些待办、谁负责」，发言人汇总走后端 query_speaker 工具'));
 
   $('#meetingSearch').addEventListener('input', renderMeetingList);
+  $('#conversationList').addEventListener('click', handleConversationClick);
   $('#meetingList').addEventListener('click', async (event) => {
     const button = event.target.closest('.mtg');
     if (!button) return;
@@ -230,6 +231,12 @@ async function init() {
   } catch (error) {
     toast('会议库加载失败：' + error.message);
     return;
+  }
+  try {
+    await loadConversations();
+  } catch (error) {
+    // 会话列表是辅助功能：拿不到也不该拦住主流程
+    store.conversations = [];
   }
   if (store.panelMeetingId) {
     try {

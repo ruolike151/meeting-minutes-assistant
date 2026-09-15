@@ -249,3 +249,29 @@ def test_export_ascii_fallback_is_usable(client) -> None:
     ]
     assert 'filename="export.md"' in header
     assert "filename*=UTF-8''" in header
+
+
+def test_conversation_list_supports_switching(client) -> None:
+    """侧栏的"对话"栏靠这个接口切换历史会话。"""
+    assert client.get("/api/conversations").json() == []
+
+    first = client.post(
+        "/api/chat?stream=0", json={"message": "官网改版周会定了什么？"}
+    ).json()
+    client.post(
+        "/api/chat?stream=0",
+        json={"message": "那还有哪些待办？", "conversation_id": first["conversation_id"]},
+    )
+
+    items = client.get("/api/conversations").json()
+    assert len(items) == 1
+    item = items[0]
+    assert item["id"] == first["conversation_id"]
+    # 标题取第一条用户消息，消息数是两轮问答（4 条）
+    assert item["title"] == "官网改版周会定了什么？"
+    assert item["message_count"] == 4
+    assert item["updated_at"] >= item["created_at"]
+
+    # limit 生效，且越界值被 422 拦下（不给前端塞一个拖垮库的查询）
+    assert len(client.get("/api/conversations", params={"limit": 1}).json()) == 1
+    assert client.get("/api/conversations", params={"limit": 0}).status_code == 422

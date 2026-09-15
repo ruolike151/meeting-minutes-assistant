@@ -63,6 +63,14 @@ export async function getMeeting(id) {
   return toJson(await fetch('/api/meetings/' + encodeURIComponent(id)));
 }
 
+export async function listConversations(limit = 50) {
+  return toJson(await fetch('/api/conversations?limit=' + encodeURIComponent(limit)));
+}
+
+export async function getConversation(id) {
+  return toJson(await fetch('/api/conversations/' + encodeURIComponent(id)));
+}
+
 /* getMinutes / listReview 对应文档 11 节的独立接口。M1 的界面走的是
    MeetingDetail 聚合视图，这两个方法留给后续里程碑与其他调用方。 */
 export async function getMinutes(id) {

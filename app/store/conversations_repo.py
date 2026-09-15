@@ -82,6 +82,36 @@ class ConversationRepo:
                 conversations.append(conversation)
         return conversations
 
+    def list_summaries(self, limit: int = 50) -> list[dict]:
+        """会话列表（给侧栏切换用）：标题取第一条用户消息，按最近活跃排序。
+
+        一条 SQL 出齐，避免"列表 N 条就 N 次查询"：
+        标题与消息数用相关子查询，活跃时间取最后一条消息的时间（没有消息就退回创建时间）。
+        """
+        rows = self.conn.execute(
+            "SELECT c.id, c.created_at,"
+            " COALESCE((SELECT m.content FROM messages m"
+            "   WHERE m.conversation_id = c.id AND m.role = 'user'"
+            "   ORDER BY m.created_at, m.rowid LIMIT 1), '') AS title,"
+            " (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id)"
+            "   AS message_count,"
+            " COALESCE((SELECT MAX(m.created_at) FROM messages m"
+            "   WHERE m.conversation_id = c.id), c.created_at) AS updated_at"
+            " FROM conversations c"
+            " ORDER BY updated_at DESC, c.rowid DESC LIMIT ?",
+            (int(limit),),
+        ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "title": (row["title"] or "").strip(),
+                "message_count": int(row["message_count"] or 0),
+                "created_at": datetime.fromisoformat(row["created_at"]),
+                "updated_at": datetime.fromisoformat(row["updated_at"]),
+            }
+            for row in rows
+        ]
+
     # -- 多轮上下文摘要（M3）---------------------------------------------
 
     def summary(self, conversation_id: str) -> str | None:

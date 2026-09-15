@@ -147,3 +147,36 @@ def test_scope_chip_can_switch_back_to_library() -> None:
     assert "dataset.meetingId" in scope_fn, "范围标签要记录当前限定到哪场会议"
     app = read("app.js")
     assert "scopeChip" in app and "setScope(null)" in app, "app.js 要绑定范围标签的点击"
+
+
+def test_conversation_switcher_is_wired() -> None:
+    """侧栏的"对话"栏：节点存在、接口可用、点击能加载历史会话。"""
+    html = read("index.html")
+    for node_id in ("conversationList", "conversationCount", "convEmpty"):
+        assert 'id="%s"' % node_id in html, "缺少会话列表节点：" + node_id
+    api_source = read("api.js")
+    assert "listConversations" in api_source and "getConversation" in api_source
+    panel = read("panel.js")
+    assert "renderConversationList" in panel and "ma:open-conversation" in panel
+    chat = read("chat.js")
+    assert "openConversation" in chat and "ma:open-conversation" in chat
+    assert "loadConversations" in chat, "发完消息要刷新会话列表"
+    assert "conversationList" in read("app.js"), "app.js 要绑定列表点击"
+
+
+def test_audio_player_respects_availability() -> None:
+    """原声不可播时不要渲染坏掉的播放器（用户反馈过这个问题）。"""
+    raw = function_body(read("panel.js"), "renderRaw")
+    assert "audio_available" in raw, "播放器要按 audio_available 判断"
+    assert "没有可播放的原声文件" in raw, "不可播时要有说明文案"
+    assert "playable" in raw
+
+
+def test_store_initialises_messages_array() -> None:
+    """`store.messages` 必须在 store 里初始化。
+
+    浏览器实测抓到的 bug：只有点过「新建对话」才会给它赋值，
+    于是"进页面直接提问"会撞上 undefined.push（首屏必崩，但只在没点新对话时出现）。
+    """
+    source = read("store.js")
+    assert "messages: []" in source, "store 必须初始化 messages: []"

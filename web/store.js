@@ -5,6 +5,11 @@
 
 export const store = {
   meetings: [],              // MeetingSummary[]
+  conversations: [],         // ConversationSummary[]（侧栏对话列表）
+  // 对话消息（role + content）：send / openConversation 往里追加。
+  // 必须在这里初始化：否则"进页面直接提问"会撞上 undefined.push
+  // （只有先点过「新建对话」才被赋值，属于隐藏的首次使用崩溃）
+  messages: [],
   details: new Map(),        // id -> MeetingDetail
   activeId: null,            // 对话作用域：null 表示全局
   panelMeetingId: null,

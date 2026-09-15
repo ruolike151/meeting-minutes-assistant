@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 from app.agent.pipeline import ChatResult, respond, stream
 from app.api.deps import get_context, get_settings
 from app.api.export import content_disposition, conversation_markdown
-from app.api.schemas import ChatRequest, ChatResponse
+from app.api.schemas import ChatRequest, ChatResponse, ConversationSummary
 from app.api.sse import SSE_HEADERS, sse_event
 from app.config import Settings
 from app.domain.models import Conversation
@@ -99,6 +99,18 @@ def get_conversation(
     if conversation is None:
         raise HTTPException(status_code=404, detail="会话不存在")
     return conversation
+
+
+@router.get("/conversations", response_model=list[ConversationSummary])
+def list_conversations(
+    limit: int = Query(default=50, ge=1, le=200),
+    ctx: ToolContext = Depends(get_context),
+) -> list[ConversationSummary]:
+    """会话列表：侧栏的"对话"栏用它切换历史会话。"""
+    return [
+        ConversationSummary(**item)
+        for item in ConversationRepo(ctx.conn).list_summaries(limit=limit)
+    ]
 
 
 @router.get("/conversations/{conversation_id}/export")

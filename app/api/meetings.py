@@ -67,6 +67,14 @@ def get_meeting(meeting_id: str, ctx: ToolContext = Depends(get_context)) -> Mee
     if meeting is None:
         raise HTTPException(status_code=404, detail="会议不存在")
     minutes = MinutesRepo(ctx.conn).get_with_overrides(meeting_id)
+    # 原声是否可播：文件真的在音频目录里才算（样例会议只有转写文本）
+    audio_available = False
+    if meeting.audio_file and ctx.settings is not None:
+        try:
+            audio_path(meeting.audio_file, ctx.settings.audio_dir)
+            audio_available = True
+        except (FileNotFoundError, PermissionError):
+            audio_available = False
     return MeetingDetail(
         id=meeting.id,
         title=meeting.title,
@@ -75,6 +83,7 @@ def get_meeting(meeting_id: str, ctx: ToolContext = Depends(get_context)) -> Mee
         duration=meeting.duration,
         status=meeting.status,
         audio_file=meeting.audio_file,
+        audio_available=audio_available,
         participants=meeting.participants,
         segments=SegmentRepo(ctx.conn).list_for_meeting(meeting_id),
         summary=minutes.summary if minutes else [],

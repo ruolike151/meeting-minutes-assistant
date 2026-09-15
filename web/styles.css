@@ -365,6 +365,26 @@ input, textarea { font: inherit; color: inherit; }
 }
 .scope-chip:hover .scope-x { color: var(--accent); }
 
+/* 对话列表（切换历史会话）：与会议库同一套视觉，高度受限、可滚动 */
+.conv-lib { flex: none; max-height: 210px; display: flex; flex-direction: column; }
+.conv-list {
+  list-style: none; margin: 0; padding: 0 2px 2px;
+  overflow-y: auto; display: grid; gap: 2px;
+}
+.conv-list li { min-width: 0; }
+.conv {
+  display: grid; gap: 2px; width: 100%; padding: 7px 9px;
+  border-radius: var(--r-sm); text-align: left;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+.conv:hover { background: var(--muted); }
+.conv.active { background: var(--muted); box-shadow: inset 0 0 0 1px var(--border); }
+.conv-title {
+  font-size: 13px; color: var(--fg); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.conv-meta { font-size: 11.5px; color: var(--fg-subtle); }
+
 .stream {
   flex: 1; min-height: 0; overflow-y: auto;
   padding: var(--s-5) var(--s-5) var(--s-6);

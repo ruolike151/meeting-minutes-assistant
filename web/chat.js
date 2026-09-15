@@ -4,15 +4,18 @@
 音频是 POST /api/audio + GET /api/tasks/{id}/events（SSE）。 */
 
 import * as api from './api.js';
-import { loadLibrary, openPanel, setTab } from './panel.js';
+import {
+  loadConversations, loadLibrary, openPanel, renderConversationList, setTab,
+} from './panel.js';
 import { store, speakerName } from './store.js';
 import { $, $$, ICON, citationChip, escapeHtml, fileSize, mmss, stepsHtml, toast } from './ui.js';
 
 const SUGGESTIONS = [
-  { icon: 'search', title: '这场周会定了什么？', sub: '查询指定会议的结论与决议' },
-  { icon: 'user', title: 'C 一共答应了哪些事？', sub: '跨会议汇总某人的承诺与待办' },
-  { icon: 'mic', title: '谁提到了活动弹窗的问题？', sub: '定位具体发言人与原声时间点' },
-  { icon: 'alert', title: '这三场会有什么风险？', sub: '跨会议汇总未决事项与风险' },
+  // 示例只写通用问法：不出现具体人名，也不绑定某场虚构会议的内容
+  { icon: 'mic', title: '把这段录音整理成纪要', sub: '上传音频，生成结构化纪要与待办' },
+  { icon: 'search', title: '这场会定了哪些事？', sub: '查询指定会议的结论与决议' },
+  { icon: 'user', title: '有哪些待办，谁负责？', sub: '按负责人汇总承诺与截止时间' },
+  { icon: 'alert', title: '没定下来的问题有哪些？', sub: '汇总待确认事项与风险' },
 ];
 
 export function updateSendState() {
@@ -165,6 +168,8 @@ export async function send(text) {
     });
     store.conversationId = result.conversation_id;
     removeThinking();
+    // 会话列表要跟着更新（标题取第一句提问、按最近活跃排序）
+    loadConversations().catch(() => {});
     const answer = result.answer;
     store.messages.push({ role: 'assistant', content: result.message.content });
     const node = appendMessage({ id: result.message.id, role: 'assistant', html: '' });
@@ -322,5 +327,55 @@ export function newChat() {
   welcome.id = 'welcome';
   $('#stream').appendChild(welcome);
   setScope(null);
+  loadConversations().catch(() => {});
   toast('已开始新的对话');
 }
+
+export async function openConversation(conversationId) {
+  if (!conversationId) return;
+  try {
+    const conversation = await api.getConversation(conversationId);
+    store.conversationId = conversation.id;
+    store.messages = (conversation.messages || []).map((message) => ({
+      role: message.role,
+      content: message.content,
+    }));
+    $('#stream').innerHTML = '';
+    (conversation.messages || []).forEach((message) => {
+      if (message.role === 'user') {
+        appendUserMessage(message.content);
+        return;
+      }
+      const node = appendMessage({ id: message.id, role: 'assistant', html: '' });
+      const bubble = node.querySelector('.bubble');
+      // 落库时存了完整的 Answer 载荷，重开页面能原样还原引用 chip
+      bubble.innerHTML = message.answer
+        ? renderAnswer(message.answer)
+        : '<p>' + escapeHtml(message.content) + '</p>';
+    });
+    scrollStream(true);
+    setScope(scopeOfConversation(conversation));
+    renderConversationList();
+    toast('已切换到该会话');
+  } catch (error) {
+    toast('会话打开失败：' + error.message);
+  }
+}
+
+/* 会话最后一条助手消息里带着 [scope=...] 标记（与后端范围继承同一套标记），
+   切回来时把提问范围也恢复成当时的样子。 */
+function scopeOfConversation(conversation) {
+  const messages = conversation.messages || [];
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const match = /\[scope=([^\]]+)\]/.exec(messages[index].content || '');
+    if (match) {
+      const ids = match[1].split(',').map((item) => item.trim()).filter(Boolean);
+      return ids.length === 1 ? ids[0] : null;
+    }
+  }
+  return null;
+}
+
+document.addEventListener('ma:open-conversation', (event) => {
+  openConversation(event.detail && event.detail.id);
+});

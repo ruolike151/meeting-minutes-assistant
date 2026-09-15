@@ -59,6 +59,9 @@ _DOMAIN_MODELS = (
 _AGENT_MODELS = (
     ("app.agent.answers", "Draft"),
     ("app.agent.persist", "ChatResult"),
+    # 检索结果也进状态（retrieval / evidence），漏登记同样会被静默拦掉
+    ("app.retrieval.pipeline", "RetrievedSegment"),
+    ("app.retrieval.pipeline", "RetrievalResult"),
 )
 
 

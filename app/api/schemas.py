@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -78,6 +78,10 @@ class MeetingDetail(BaseModel):
     duration: float = 0
     status: str
     audio_file: str | None = None
+    # 原声是否真的可播（音频文件在不在磁盘上）。
+    # 样例会议只有转写、没有音频文件，前端据此把播放器换成说明文案，
+    # 而不是渲染一个点了没反应的播放器（用户反馈过这个问题）。
+    audio_available: bool = False
     participants: list[Participant] = Field(default_factory=list)
     segments: list[Segment] = Field(default_factory=list)
     summary: list[SummaryTopic] = Field(default_factory=list)
@@ -143,3 +147,15 @@ class TaskStatus(BaseModel):
     meeting_id: str | None = None
     error: str | None = None
     notes: str | None = None
+
+
+class ConversationSummary(BaseModel):
+    """会话列表项（侧栏切换用）：标题取第一条用户消息，按最近活跃排序。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    title: str = ""
+    message_count: int = 0
+    created_at: datetime
+    updated_at: datetime

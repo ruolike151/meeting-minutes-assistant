@@ -81,8 +81,9 @@ def test_chat_graph_state_round_trips_through_sqlite(conn, settings: Settings) -
 
     reset_cache()
     conversation_id = None
+    # 用内容型问题（走检索），这样状态里同时有 retrieval / evidence / answer / result
     for event, payload in stream(
-        conn, "官网改版周会定了什么？", conversation_id=None, settings=settings
+        conn, "设计稿什么时候交付？", conversation_id=None, settings=settings
     ):
         if event == "done":
             conversation_id = payload.conversation_id
@@ -94,4 +95,6 @@ def test_chat_graph_state_round_trips_through_sqlite(conn, settings: Settings) -
     assert values.get("answer") is not None, "Answer 必须能反序列化回来"
     assert values.get("result") is not None, "ChatResult 必须能反序列化回来"
     assert values.get("answer_draft") is not None, "Draft 必须能反序列化回来"
+    assert values.get("retrieval") is not None, "RetrievalResult 必须能反序列化回来"
+    assert values.get("evidence"), "检索命中的片段必须能反序列化回来"
     reset_cache()

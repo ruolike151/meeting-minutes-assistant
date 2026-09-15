@@ -19,6 +19,52 @@ export async function loadLibrary(params = {}) {
   return store.meetings;
 }
 
+/* ── 对话列表（切换历史会话）─────────────────────────────────
+   只负责"列出 + 点击分发"：消息怎么渲染由 chat.js 决定，
+   两边通过自定义事件解耦，避免 panel ↔ chat 互相 import。 */
+
+export async function loadConversations() {
+  const items = await api.listConversations();
+  store.conversations = items;
+  renderConversationList();
+  return items;
+}
+
+export function renderConversationList() {
+  const list = $('#conversationList');
+  if (!list) return;
+  const items = store.conversations || [];
+  list.innerHTML = items.map((item) => {
+    const active = store.conversationId === item.id;
+    const title = item.title || '（空对话）';
+    return '<li><button class="conv' + (active ? ' active' : '') + '" type="button" data-cid="' +
+      escapeHtml(item.id) + '"' + (active ? ' aria-current="true"' : '') + '>' +
+      '<span class="conv-title">' + escapeHtml(title) + '</span>' +
+      '<span class="conv-meta">' + escapeHtml(shortTime(item.updated_at)) +
+      ' · ' + item.message_count + ' 条</span></button></li>';
+  }).join('');
+  $('#conversationCount').textContent = String(items.length);
+  $('#convEmpty').hidden = items.length > 0;
+}
+
+function shortTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return (date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' +
+    pad(date.getHours()) + ':' + pad(date.getMinutes());
+}
+
+export function handleConversationClick(event) {
+  const button = event.target.closest('.conv');
+  if (!button) return;
+  // 交给 chat.js 去加载并渲染（它拥有消息渲染逻辑）
+  document.dispatchEvent(
+    new CustomEvent('ma:open-conversation', { detail: { id: button.dataset.cid } })
+  );
+}
+
 export function renderMeetingList() {
   const list = $('#meetingList');
   const query = ($('#meetingSearch').value || '').trim().toLowerCase();
@@ -197,11 +243,16 @@ function reviewCard(item) {
 }
 
 function renderRaw(detail) {
-  // 有原声就给出播放器：点击引用时会定位到该片段的起点（M4 决策 ④=A）
-  const audio = detail.audio_file
+  // 有原声（且文件真的在）才给播放器：点击引用时会定位到该片段的起点（M4 决策 ④=A）。
+  // 样例会议只有转写没有音频文件，此时给一句说明，而不是一个点了没反应的播放器。
+  const playable = Boolean(detail.audio_available);
+  const audio = playable
     ? '<div class="audio-bar"><audio id="panelAudio" controls preload="none" src="/api/meetings/' +
       encodeURIComponent(detail.id) + '/audio"></audio></div>'
-    : '';
+    : detail.audio_file
+      ? '<p class="raw-note">这场会议没有可播放的原声文件（样例数据只带转写文本），' +
+        '点击引用仍会定位并高亮对应片段。</p>'
+      : '';
   const turns = (detail.segments || []).map((segment) => {
     const low = segment.speaker_confidence < 0.93;
     return '<div class="turn' + (low ? ' low' : '') + '" id="seg-' + segment.id +
@@ -212,7 +263,7 @@ function renderRaw(detail) {
       '</span></div><div class="turn-text">' + escapeHtml(segment.text) + '</div></div>';
   }).join('');
   return audio + '<p class="raw-note">完整转写 · 点击回答中的引用会跳转并高亮对应片段' +
-    (detail.audio_file ? '，并从该句开始播放' : '（这场会议没有原声文件，只做高亮）') +
+    (playable ? '，并从该句开始播放' : '（只做高亮，不播放）') +
     '。声纹置信度低于 0.93 的片段带 ? 标记。</p>' + turns;
 }
 
