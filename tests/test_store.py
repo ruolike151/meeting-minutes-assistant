@@ -161,7 +161,82 @@ def test_rename_speakers_migrates_existing_rows(tmp_path) -> None:
 
         # 幂等：再跑一次什么都不改
         again = rename_speakers(conn)
-        assert again == {"participants": 0, "speakers": 0, "skipped": []}
+        assert again == {"participants": 0, "speakers": 0, "messages": 0, "skipped": []}
+    finally:
+        conn.close()
+
+
+def test_rename_speakers_also_cleans_conversation_history(tmp_path) -> None:
+    """历史对话里的旧人名也换成代号：会话列表标题取自首条消息，不换就还会露姓名。"""
+    from app.config import Settings
+    from app.domain.models import Message
+    from app.store.conversations_repo import ConversationRepo
+    from app.store.db import open_db
+    from app.store.speaker_names import rename_speakers
+    from app.store.repos import utcnow
+
+    settings = Settings.from_env(tmp_path / "data")
+    conn = open_db(settings)
+    try:
+        repo = ConversationRepo(conn)
+        conversation = repo.create()
+        repo.append(
+            conversation.id,
+            Message(
+                id="msg_1",
+                role="user",
+                content="王强一共答应了哪些事？",
+                created_at=utcnow(),
+            ),
+        )
+        repo.append(
+            conversation.id,
+            Message(
+                id="msg_2",
+                role="assistant",
+                content="王强在 2 场会议中共承担 2 项待办。",
+                created_at=utcnow(),
+            ),
+        )
+
+        result = rename_speakers(conn)
+        assert result["messages"] == 2
+        items = repo.list_summaries()
+        assert items[0]["title"] == "C 一共答应了哪些事？"
+        stored = repo.get(conversation.id)
+        assert stored.messages[1].content.startswith("C 在")
+        # 幂等
+        assert rename_speakers(conn)["messages"] == 0
+    finally:
+        conn.close()
+
+
+def test_reset_conversations_keeps_meetings(tmp_path) -> None:
+    """清空历史对话不能碰会议库（演示前清理用）。"""
+    from app.config import Settings
+    from app.domain.models import Message
+    from app.store.conversations_repo import ConversationRepo
+    from app.store.db import open_db
+    from app.store.repos import MeetingRepo, utcnow
+
+    settings = Settings.from_env(tmp_path / "data")
+    conn = open_db(settings)
+    try:
+        repo = ConversationRepo(conn)
+        conversation = repo.create()
+        repo.append(
+            conversation.id,
+            Message(id="msg_x", role="user", content="随便问一句", created_at=utcnow()),
+        )
+        before_meetings = MeetingRepo(conn).count()
+        assert repo.list_summaries(), "先确认有会话"
+
+        conn.execute("DELETE FROM messages")
+        conn.execute("DELETE FROM conversations")
+        conn.commit()
+
+        assert repo.list_summaries() == []
+        assert MeetingRepo(conn).count() == before_meetings
     finally:
         conn.close()
 

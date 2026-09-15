@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import sqlite3
+import re
 
 # 按 speaker_id 映射（首选，稳定）
 SPEAKER_CODES: dict[str, str] = {
@@ -57,8 +58,12 @@ def code_for(speaker_id: str | None, name: str | None) -> str | None:
 
 
 def rename_speakers(conn: sqlite3.Connection, *, dry_run: bool = False) -> dict:
-    """原地改名。返回 `{"participants": n, "speakers": n, "skipped": [...]}`。"""
-    result = {"participants": 0, "speakers": 0, "skipped": []}
+    """原地改名。返回 `{"participants": n, "speakers": n, "messages": n, "skipped": [...]}`。
+
+    历史对话（`messages.content` / `messages.answer`）里的旧人名也一起替换：
+    会话列表的标题取自第一条用户消息，不换的话"改完名还能看到姓名"。
+    """
+    result = {"participants": 0, "speakers": 0, "messages": 0, "skipped": []}
 
     rows = conn.execute(
         "SELECT meeting_id, speaker_id, name FROM participants"
@@ -93,9 +98,44 @@ def rename_speakers(conn: sqlite3.Connection, *, dry_run: bool = False) -> dict:
         existing.add(code)
         result["speakers"] += 1
 
+    for row in conn.execute("SELECT id, content, answer FROM messages").fetchall():
+        content = row["content"] or ""
+        answer = row["answer"]
+        new_content = replace_names(content)
+        new_answer = replace_names(answer) if answer else answer
+        if new_content == content and new_answer == answer:
+            continue
+        if not dry_run:
+            conn.execute(
+                "UPDATE messages SET content = ?, answer = ? WHERE id = ?",
+                (new_content, new_answer, row["id"]),
+            )
+        result["messages"] += 1
+
     if not dry_run:
         conn.commit()
     return result
 
 
-__all__ = ["LEGACY_NAME_CODES", "SPEAKER_CODES", "code_for", "rename_speakers"]
+def replace_names(text: str) -> str:
+    """把文本里的旧姓名/岗位称呼替换成字母代号（按最长匹配优先，避免半截替换）。
+
+    代号后面紧跟中文时补一个空格（"王强一共…" → "C 一共…"），
+    否则中英混排会挤成"C一共…"，读起来别扭。
+    """
+    for name in sorted(LEGACY_NAME_CODES, key=len, reverse=True):
+        if name not in text:
+            continue
+        code = LEGACY_NAME_CODES[name]
+        text = re.sub(re.escape(name) + r"(?=[\u4e00-\u9fff])", code + " ", text)
+        text = text.replace(name, code)
+    return text
+
+
+__all__ = [
+    "LEGACY_NAME_CODES",
+    "SPEAKER_CODES",
+    "code_for",
+    "rename_speakers",
+    "replace_names",
+]

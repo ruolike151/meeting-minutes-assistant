@@ -40,8 +40,14 @@ def main() -> int:
         result = rename_speakers(conn, dry_run=args.dry_run)
         action = "将改" if args.dry_run else "已改"
         print(
-            "%s：参会人姓名 %d 处，声纹库 %d 处（库：%s）"
-            % (action, result["participants"], result["speakers"], settings.db_path)
+            "%s：参会人姓名 %d 处，声纹库 %d 处，历史对话 %d 条（库：%s）"
+            % (
+                action,
+                result["participants"],
+                result["speakers"],
+                result["messages"],
+                settings.db_path,
+            )
         )
         for item in result["skipped"]:
             print("  跳过：%s（%s）—— %s" % (item["id"], item["name"], item["reason"]))
