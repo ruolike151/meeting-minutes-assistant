@@ -14,11 +14,11 @@ M1 靠这套数据跑通对话与会议库；M2 接入真实转写后，它仍�
 from __future__ import annotations
 
 SPEAKERS: dict[str, dict[str, str]] = {
-    "p_chen": {"name": "陈静", "role": "运营"},
-    "p_li": {"name": "李明", "role": "设计"},
-    "p_wang": {"name": "王强", "role": "前端开发"},
-    "p_zhao": {"name": "赵磊", "role": "项目负责人"},
-    "p_sun": {"name": "孙悦", "role": "测试"},
+    "p_chen": {"name": "A", "role": "运营"},
+    "p_li": {"name": "B", "role": "设计"},
+    "p_wang": {"name": "C", "role": "前端开发"},
+    "p_zhao": {"name": "D", "role": "项目负责人"},
+    "p_sun": {"name": "E", "role": "测试"},
 }
 
 MEETINGS: list[dict] = [
@@ -141,11 +141,11 @@ MEETINGS: list[dict] = [
             {"id": "s7", "start": 1120, "end": 1300, "speaker": "p_chen", "confidence": 0.91,
              "text": "我们倾向滚动十二个月，这样跟会员的有效期是对齐的，用户理解成本也低一些。"},
             {"id": "s8", "start": 1300, "end": 1420, "speaker": "p_zhao", "confidence": 0.95,
-             "text": "那就滚动十二个月，这个定了。王强你评估一下工作量。"},
+             "text": "那就滚动十二个月，这个定了。C 你评估一下工作量。"},
             {"id": "s9", "start": 1420, "end": 1700, "speaker": "p_wang", "confidence": 0.93,
              "text": "滚动计算需要额外维护一张积分流水表，工作量大概增加两天，整体算下来八天左右。"},
             {"id": "s10", "start": 1700, "end": 1980, "speaker": "p_zhao", "confidence": 0.96,
-             "text": "八天可以接受，那这版就按滚动十二个月来做。退款积分的问题，下周一之前跟财务确认，孙悦你来跟这件事。"},
+             "text": "八天可以接受，那这版就按滚动十二个月来做。退款积分的问题，下周一之前跟财务确认，E 你来跟这件事。"},
         ],
         "minutes": {
             "summary": [
@@ -206,7 +206,7 @@ MEETINGS: list[dict] = [
         "participants": ["p_li", "p_wang", "p_zhao"],
         "segments": [
             {"id": "s1", "start": 8, "end": 62, "speaker": "p_zhao", "confidence": 0.96,
-             "text": "今天过一下移动端体验专项，主要看启动速度。李明你这边有实测数据吗？"},
+             "text": "今天过一下移动端体验专项，主要看启动速度。B 你这边有实测数据吗？"},
             {"id": "s2", "start": 62, "end": 268, "speaker": "p_li", "confidence": 0.94,
              "text": "有。我们用真机测了十二款机型，冷启动中位数是二点八秒，最慢的机型要四点一秒。用户反馈里，有百分之二十三的人提到打开慢。"},
             {"id": "s3", "start": 268, "end": 372, "speaker": "p_zhao", "confidence": 0.95,
@@ -220,7 +220,7 @@ MEETINGS: list[dict] = [
             {"id": "s7", "start": 980, "end": 1240, "speaker": "p_wang", "confidence": 0.92,
              "text": "接口并发大概能省六百毫秒，图片优化能省四百到五百毫秒，加起来应该能进两秒以内。"},
             {"id": "s8", "start": 1240, "end": 1520, "speaker": "p_zhao", "confidence": 0.96,
-             "text": "那这个专项就按这两块做，王强你来负责，排到下个迭代里。另外李明准备一份优化前后的对比数据，下次会上看效果。"},
+             "text": "那这个专项就按这两块做，C 你来负责，排到下个迭代里。另外 B 准备一份优化前后的对比数据，下次会上看效果。"},
             {"id": "s9", "start": 1520, "end": 1620, "speaker": "p_li", "confidence": 0.95,
              "text": "好的，没问题。"},
             {"id": "s10", "start": 1620, "end": 1860, "speaker": "p_zhao", "confidence": 0.94,
@@ -244,7 +244,7 @@ MEETINGS: list[dict] = [
             "decisions": [
                 {"id": "d1", "content": "移动端体验专项聚焦首屏接口并发化与图片资源优化两条主线。",
                  "evidence": ["s5", "s8"], "confidence": 0.92},
-                {"id": "d2", "content": "该专项排入下一迭代，由王强负责实现。",
+                {"id": "d2", "content": "该专项排入下一迭代，由 C 负责实现。",
                  "evidence": ["s8"], "confidence": 0.94},
             ],
             "action_items": [

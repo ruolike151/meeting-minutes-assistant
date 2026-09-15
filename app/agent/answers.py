@@ -264,7 +264,8 @@ def answer_speaker_tasks(ctx: AnswerContext, speaker_id: str, speaker_name: str)
             blocks=[],
         )
     return Draft(
-        lead="%s在%s中共承担 %d 项待办，累计发言约 %d 分钟。"
+        # 发言人可能是字母代号（A/B/C…），中英混排时留一个空格更好读
+        lead="%s 在%s中共承担 %d 项待办，累计发言约 %d 分钟。"
         % (speaker_name, ctx.scope_label(), total, round(speaking / 60)),
         blocks=[quote_block("待办明细", items)],
     )

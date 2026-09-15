@@ -40,7 +40,7 @@ def test_registry_rejects_bad_payload(ctx) -> None:
 
 
 def test_list_meetings_tool_filters_by_participant(ctx) -> None:
-    output = call_tool(ctx, "list_meetings", ListMeetingsInput(participant="李明"))
+    output = call_tool(ctx, "list_meetings", ListMeetingsInput(participant="B"))
     assert [meeting.id for meeting in output.meetings] == ["m_20260911", "m_20260904"]
     summary = output.meetings[0]
     assert summary.segment_count == 12
@@ -91,11 +91,11 @@ def test_search_segments_tool_returns_hits_with_titles(ctx) -> None:
     output = call_tool(ctx, "search_segments", SearchSegmentsInput(query="活动弹窗点击转化率"))
     assert output.refused is False
     assert output.hits[0].meeting_title == "官网改版周会"
-    assert output.hits[0].speaker_name == "陈静"
+    assert output.hits[0].speaker_name == "A"
 
 
 def test_query_speaker_tool_aggregates(ctx) -> None:
-    output = call_tool(ctx, "query_speaker", QuerySpeakerInput(speaker="王强"))
+    output = call_tool(ctx, "query_speaker", QuerySpeakerInput(speaker="C"))
     assert output.found is True
     assert output.speaker_id == "p_wang"
     assert output.speaking_seconds == pytest.approx(1505.0)

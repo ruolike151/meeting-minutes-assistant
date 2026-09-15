@@ -81,9 +81,9 @@ def test_citation_key_and_label() -> None:
         meeting_id="m1",
         meeting_title="周会",
         segment_id="s3",
-        speaker="李明",
+        speaker="B",
         start=190,
-        label="李明 03:10",
+        label="B 03:10",
     )
     assert citation.key == "m1:s3"
     assert citation.start == 190

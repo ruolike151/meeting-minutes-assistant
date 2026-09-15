@@ -24,7 +24,7 @@ CHUNK_ONE = {
     "summary": [{"topic": "活动弹窗", "points": ["入口太深"], "evidence": ["s1"]}],
     "decisions": [{"content": "下周三上线", "evidence": ["s2"]}],
     "action_items": [
-        {"task": "补埋点口径", "owner": "王强", "owner_source": "explicit",
+        {"task": "补埋点口径", "owner": "C", "owner_source": "explicit",
          "due_text": "下周三", "evidence": ["s2"]}
     ],
     "open_questions": [],
@@ -109,7 +109,7 @@ def test_to_minutes_maps_owner_name_to_speaker_id(conn) -> None:
     draft = MinutesDraft.model_validate(
         {
             "action_items": [
-                {"task": "补埋点", "owner": "王强", "owner_source": "explicit",
+                {"task": "补埋点", "owner": "C", "owner_source": "explicit",
                  "due_text": "下周三", "evidence": ["s2"]}
             ]
         }

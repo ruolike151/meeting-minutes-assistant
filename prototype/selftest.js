@@ -100,8 +100,8 @@ check('无关词返回空结果', searchSegments('紫菜蛋花汤', MEETINGS).le
 console.log('\n[3] 回答引擎');
 const cases = [
   { q: '这场周会定了什么？', expect: /决议/ },
-  { q: '王强一共答应了哪些事？', expect: /王强/ },
-  { q: '谁提到了活动弹窗的问题？', expect: /陈静/ },
+  { q: 'C 一共答应了哪些事？', expect: /C/ },
+  { q: '谁提到了活动弹窗的问题？', expect: /A/ },
   { q: '这三场会有什么风险？', expect: /风险/ },
   { q: '有什么还没定下来的？', expect: /未决|待确认/ },
   { q: '待办有哪些？', expect: /待办/ }

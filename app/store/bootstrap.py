@@ -68,7 +68,7 @@ def build_models(raw: dict) -> tuple[Meeting, list[Segment], Minutes]:
         )
         for speaker_id in raw["participants"]
     ]
-    # 参会人姓名进分词用户词典，避免「王强」被切成「王」「强」（《技术方案》9.2）
+    # 参会人姓名进分词用户词典，避免「C」被切成「王」「强」（《技术方案》9.2）
     register_words(p.name for p in participants)
 
     segments = [

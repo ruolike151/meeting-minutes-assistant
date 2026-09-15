@@ -18,10 +18,10 @@
       "audio_file": "meeting.mp3",
       "annotation_file": "meeting.demo.json",
       "participants": {
-        "A": {"id": "p_pm", "name": "项目经理", "role": "项目负责人"},
-        "B": {"id": "p_ops", "name": "运营专员", "role": "运营"},
-        "C": {"id": "p_design", "name": "UI设计师", "role": "设计"},
-        "D": {"id": "p_dev", "name": "前端开发", "role": "研发"}
+        "A": {"id": "p_pm", "name": "A", "role": "项目负责人"},
+        "B": {"id": "p_ops", "name": "B", "role": "运营"},
+        "C": {"id": "p_design", "name": "C", "role": "设计"},
+        "D": {"id": "p_dev", "name": "D", "role": "研发"}
       },
       "minutes": {
         "decisions": [
@@ -50,10 +50,10 @@
       "audio_file": "meeting2.mp3",
       "annotation_file": "meeting2.demo.json",
       "participants": {
-        "A": {"id": "p_pm", "name": "项目负责人", "role": "项目负责人"},
-        "B": {"id": "p_ops", "name": "市场专员", "role": "市场"},
-        "C": {"id": "p_design", "name": "设计专员", "role": "设计"},
-        "D": {"id": "p_dev", "name": "执行专员", "role": "执行"}
+        "A": {"id": "p_pm", "name": "A", "role": "项目负责人"},
+        "B": {"id": "p_ops", "name": "B", "role": "市场"},
+        "C": {"id": "p_design", "name": "C", "role": "设计"},
+        "D": {"id": "p_dev", "name": "D", "role": "执行"}
       },
       "minutes": {
         "decisions": [

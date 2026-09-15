@@ -8,11 +8,11 @@
   ],
   "cases": [
     {"item_id": "m_20260911:a4", "kind": "action_item", "expected_action": "confirm",
-     "note": "负责人明确（陈静），只缺完成时间"},
+     "note": "负责人明确（A），只缺完成时间"},
     {"item_id": "m_20260909:a2", "kind": "action_item", "expected_action": "confirm",
-     "note": "负责人明确（王强），时间随迭代排期"},
+     "note": "负责人明确（C），时间随迭代排期"},
     {"item_id": "m_20260904:a2", "kind": "action_item", "expected_action": "confirm",
-     "note": "负责人明确（李明），时间未定"},
+     "note": "负责人明确（B），时间未定"},
     {"item_id": "m_20260904:a3", "kind": "action_item", "expected_action": "edit",
      "note": "会上没有指定负责人，应由人工补录"}
   ]

@@ -65,9 +65,9 @@ def test_verify_evidence_drops_unknown_citation(conn) -> None:
         meeting_id="m_20260911",
         meeting_title="官网改版周会",
         segment_id="s999",
-        speaker="李明",
+        speaker="B",
         start=1,
-        label="李明 00:01",
+        label="B 00:01",
     )
     draft = Draft(
         lead="测试",

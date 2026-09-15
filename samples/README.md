@@ -12,7 +12,7 @@
 | `audio/A_solo.mp3` … `D_solo.mp3` | 声纹注册音频 | 17.8–22.4 秒 / 人 |
 | `annotations/meeting.demo.json` | `meeting.mp3` 的人工标注（逐段说话人 + 正文 + 时间戳） | 7 段 |
 | `annotations/meeting2.demo.json` | `meeting2.mp3` 的人工标注 | 24 段 |
-| `annotations/speakers.json` | 标签 A–D ↔ 角色名 ↔ 注册音频 的映射 | 4 人 |
+| `annotations/speakers.json` | 说话人代号 A–D ↔ 注册音频 的映射（`role` 只写分工，界面不显示） | 4 人 |
 
 ## 两点说明
 
@@ -21,6 +21,9 @@
 2. **`GROUP` 表示多人合说。** 这是真实会议里存在、但当前领域模型（`Segment`）没有字段承载的情况。
    M2 的处理口径是：合说窗口的声纹匹配不确定，按低置信度处理，评测时把 `GROUP` 段排除在准确率之外
    （与参考实现同口径），单独统计。
+3. **说话人只用代号。** 演示与评测里一律显示 `A`/`B`/`C`/`D`，不使用真人姓名或岗位称呼
+   （2026-09-15 定稿）。产品样例库（`app/store/seeds.py`）的五位发言人同理，用 `A`–`E`。
+   代号在各自的语料内唯一；跨会议按人汇总走的是稳定的 `speaker_id`，与显示名无关。
 
 ## 跑法
 

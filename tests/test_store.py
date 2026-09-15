@@ -70,11 +70,46 @@ def test_seed_is_idempotent(conn) -> None:
     assert MeetingRepo(conn).count() == 3
 
 
+def test_speakers_use_letter_codes_only(conn) -> None:
+    """发言人一律用字母代号，不出现真人姓名或岗位称呼（2026-09-15 定稿）。
+
+    这条约束是刻意的：演示与评测素材不指向任何真实的人。
+    语料里的姓名字段只允许单个大写字母（A/B/C/D/E…）。
+    """
+    import re
+
+    for meeting in MeetingRepo(conn).list():
+        for participant in meeting.participants:
+            assert re.fullmatch(r"[A-Z]", participant.name), (
+                "%s 的发言人显示名不是字母代号：%r"
+                % (meeting.id, participant.name)
+            )
+    # 声纹注册清单（真实录音语料）同样只用代号
+    import json
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    speakers = json.loads(
+        (root / "samples" / "annotations" / "speakers.json").read_text(encoding="utf-8")
+    )
+    for speaker in speakers["speakers"]:
+        assert re.fullmatch(r"[A-Z]", speaker["name"]), speaker
+
+    corpus = json.loads(
+        (root / "samples" / "annotations" / "m5" / "real_meetings.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    for case in corpus["cases"]:
+        for participant in case["participants"]:
+            assert re.fullmatch(r"[A-Z]", participant["name"]), participant
+
+
 def test_participants_carry_speaking_seconds(conn) -> None:
     meeting = MeetingRepo(conn).get("m_20260911")
     assert meeting is not None
     wang = next(p for p in meeting.participants if p.id == "p_wang")
-    # 会议 1 里王强只有 s5（487 秒到 640 秒）
+    # 会议 1 里C 只有 s5（487 秒到 640 秒）
     assert wang.speaking_seconds == 153.0
 
 
@@ -82,7 +117,7 @@ def test_meeting_list_filters(conn) -> None:
     repo = MeetingRepo(conn)
     assert [m.id for m in repo.list()] == ["m_20260911", "m_20260909", "m_20260904"]
     assert [m.id for m in repo.list(q="会员")] == ["m_20260909"]
-    assert [m.id for m in repo.list(participant="孙悦")] == ["m_20260911", "m_20260909"]
+    assert [m.id for m in repo.list(participant="E")] == ["m_20260911", "m_20260909"]
     assert [m.id for m in repo.list(date_from="2026-09-05")] == ["m_20260911", "m_20260909"]
 
 

@@ -28,6 +28,7 @@ from app.llm.client import ChatMessage
 from app.llm.fake import FakeLLMClient
 from app.retrieval.encoder import HashingEmbedder
 from app.retrieval.index import ensure_meeting_index
+from app.retrieval.timefilter import parse_time_range
 from app.store.repos import SegmentRepo
 
 
@@ -49,16 +50,16 @@ def test_route_node_uses_rules_without_model(conn) -> None:
 def test_route_node_prefers_model_then_falls_back(conn) -> None:
     """模型给了合法结论就用它；schema 不合法就回落规则（约束 C1 不回退）。"""
     good = FakeLLMClient('{"intent": "query_speaker", "answer_mode": "speaker_tasks",'
-                         ' "speaker_id": "p_wang", "reason": "问的是王强"}')
+                         ' "speaker_id": "p_wang", "reason": "问的是C"}')
     context = make_context(conn, llm=good, route_mode="auto")
-    update = route_node({"user_input": "王强答应了什么？"}, context)
+    update = route_node({"user_input": "C 答应了什么？"}, context)
     assert update["route_source"] == "llm"
     assert update["answer_mode"] == "speaker_tasks"
     assert update["speaker_id"] == "p_wang"
 
     broken = FakeLLMClient("这不是 JSON")
     context = make_context(conn, llm=broken, route_mode="auto")
-    update = route_node({"user_input": "王强答应了什么？"}, context)
+    update = route_node({"user_input": "C 答应了什么？"}, context)
     assert update["route_source"] == "rules"
     assert update["answer_mode"] == "speaker_tasks"
 
@@ -130,16 +131,23 @@ def test_retrieve_and_grade_nodes(conn) -> None:
     assert graded["grade_reason"] == ""
 
 
-def test_retrieve_node_parses_time_range(conn) -> None:
+def test_retrieve_node_applies_time_range(conn) -> None:
+    """时间表达式要被解析成区间并下推到检索。
+
+    这里刻意用"1 月份"而不是"上周"：种子会议都在 9 月，1 月永远命不中，
+    测试就不会随运行日期漂移（"上周"在 2026-09-12 能拒答、09-15 就命中了，
+    这正是它之前失败的原因——与发言人改名无关）。
+    """
     context = make_context(conn)
     update = retrieve_node(
         {
-            "user_input": "上周活动弹窗的问题",
+            "user_input": "1月份活动弹窗的问题",
             "scope": {"meeting_ids": ["m_20260911", "m_20260909"], "narrowed": True},
         },
         context,
     )
-    # 2026-09-12 的上周是 08-31 ~ 09-06，种子会议都在 09 月，因此检索不到
+    parsed = parse_time_range("1月份活动弹窗的问题")
+    assert parsed is not None and parsed[0].month == 1 and parsed[1].month == 1
     assert update["retrieval"].refused is True
 
 
@@ -188,7 +196,7 @@ def test_synthesize_uses_template_when_model_unavailable(conn) -> None:
 def test_synthesize_uses_llm_and_filters_foreign_citations(conn) -> None:
     """模型只能引用本次检索命中的片段：越界引用被丢弃并记账。"""
     target = SegmentRepo(conn).list_for_meeting("m_20260911")[1]
-    good = '{"lead": "李明在周会上提到了这个风险。", "items": [{"title": "出处", "text": "…",' \
+    good = '{"lead": "B 在周会上提到了这个风险。", "items": [{"title": "出处", "text": "…",' \
            ' "evidence": ["m_20260911:%s", "m_20260911:s999"]}]}' % target.id
     llm = FakeLLMClient(good)
     context = make_context(conn, llm=llm)
@@ -262,9 +270,9 @@ def test_verify_node_drops_unknown_citation(conn) -> None:
         meeting_id="m_20260911",
         meeting_title="官网改版周会",
         segment_id="s999",
-        speaker="李明",
+        speaker="B",
         start=1,
-        label="李明 00:01",
+        label="B 00:01",
     )
     update = verify_evidence_node(
         {

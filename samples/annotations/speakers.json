@@ -1,9 +1,9 @@
 {
-  "note": "声纹注册清单：标签 A-D 是评测标注里的说话人代号，name 是界面上显示的角色名。两份会议标注的角色叫法不同（meeting 用项目经理/运营专员/UI设计师/前端开发，meeting2 用项目负责人/市场专员/设计专员/执行专员），但 A-D 指向的是同一个人，评测时按标签对齐。",
+  "note": "声纹注册清单：标签 A-D 是说话人代号，name 也统一用代号（界面不显示真人姓名或岗位称呼）。role 只用于说明分工，不参与展示。两份会议标注里同一标签指向同一个人，评测时按标签对齐。",
   "speakers": [
-    { "label": "A", "name": "项目经理", "role": "项目负责人", "audio": "A_solo.mp3" },
-    { "label": "B", "name": "运营专员", "role": "运营 / 市场", "audio": "B_solo.mp3" },
-    { "label": "C", "name": "UI设计师", "role": "设计", "audio": "C_solo.mp3" },
-    { "label": "D", "name": "前端开发", "role": "研发 / 执行", "audio": "D_solo.mp3" }
+    { "label": "A", "name": "A", "role": "项目负责人", "audio": "A_solo.mp3" },
+    { "label": "B", "name": "B", "role": "运营 / 市场", "audio": "B_solo.mp3" },
+    { "label": "C", "name": "C", "role": "设计", "audio": "C_solo.mp3" },
+    { "label": "D", "name": "D", "role": "研发 / 执行", "audio": "D_solo.mp3" }
   ]
 }

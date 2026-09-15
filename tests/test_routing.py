@@ -22,8 +22,8 @@ def meetings(conn):
         ("有什么还没定下来的？", "open_questions", "query_content"),
         ("还有哪些待办？", "actions", "query_content"),
         ("谁提到了活动弹窗的问题？", "attribution", "query_content"),
-        ("王强一共答应了哪些事？", "speaker_tasks", "query_speaker"),
-        ("陈静说了什么？", "speaker_speech", "query_speaker"),
+        ("C 一共答应了哪些事？", "speaker_tasks", "query_speaker"),
+        ("A 说了什么？", "speaker_speech", "query_speaker"),
         ("公司食堂今天中午吃什么？", "content", "query_content"),
     ],
 )
@@ -73,6 +73,6 @@ def test_scope_marks_ambiguous_when_two_meetings_named(meetings) -> None:
 
 
 def test_speaker_detection_returns_id(meetings) -> None:
-    result = route("王强这周做了什么", meetings=meetings)
+    result = route("C 这周做了什么", meetings=meetings)
     assert result.speaker_id == "p_wang"
-    assert result.speaker_name == "王强"
+    assert result.speaker_name == "C"

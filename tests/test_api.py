@@ -23,13 +23,13 @@ def test_meeting_library(client) -> None:
     first = body["meetings"][0]
     assert first["segment_count"] == 12
     assert first["review_count"] == 1
-    assert first["participants"][0]["name"] == "陈静"
+    assert first["participants"][0]["name"] == "A"
 
 
 def test_meeting_library_filters(client) -> None:
     body = client.get("/api/meetings", params={"q": "会员"}).json()
     assert [item["id"] for item in body["meetings"]] == ["m_20260909"]
-    body = client.get("/api/meetings", params={"participant": "孙悦"}).json()
+    body = client.get("/api/meetings", params={"participant": "E"}).json()
     assert {item["id"] for item in body["meetings"]} == {"m_20260911", "m_20260909"}
 
 
@@ -40,7 +40,7 @@ def test_meeting_detail_aggregates_view(client) -> None:
     assert len(detail["action_items"]) == 4
     assert len(detail["decisions"]) == 3
     assert [item["id"] for item in detail["review_items"]] == ["m_20260911:a4"]
-    assert detail["review_items"][0]["owner_name"] == "陈静"
+    assert detail["review_items"][0]["owner_name"] == "A"
     assert detail["review_items"][0]["citations"][0]["segment_id"] in {"s7", "s9"}
 
 

@@ -74,6 +74,12 @@
         <p id="chatSubtitle">可查询任意会议，或上传录音生成纪要</p>
       </div>
       <div class="chat-actions">
+        <button class="chip scope-chip" id="scopeChip" type="button"
+                title="切换提问范围：全部会议 / 单场会议">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+          <span id="scopeChipText">全部会议</span>
+          <span class="scope-x" id="scopeChipClear" hidden aria-hidden="true">✕</span>
+        </button>
         <button class="btn btn-ghost btn-export" id="exportBtn" type="button">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
           导出

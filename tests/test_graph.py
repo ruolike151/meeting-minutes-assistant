@@ -155,7 +155,7 @@ def test_llm_usage_reaches_chat_trace(conn) -> None:
     from app.llm.cache import CachedLLMClient
 
     answer_json = (
-        '{"lead": "李明提到了这个风险。", "items": [{"title": "出处", "text": "…",'
+        '{"lead": "B 提到了这个风险。", "items": [{"title": "出处", "text": "…",'
         ' "evidence": ["m_20260911:s2"]}]}'
     )
     inner = FakeLLMClient(answer_json, cost_per_call=0.0009)

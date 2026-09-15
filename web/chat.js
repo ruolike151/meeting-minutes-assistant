@@ -10,7 +10,7 @@ import { $, $$, ICON, citationChip, escapeHtml, fileSize, mmss, stepsHtml, toast
 
 const SUGGESTIONS = [
   { icon: 'search', title: '这场周会定了什么？', sub: '查询指定会议的结论与决议' },
-  { icon: 'user', title: '王强一共答应了哪些事？', sub: '跨会议汇总某人的承诺与待办' },
+  { icon: 'user', title: 'C 一共答应了哪些事？', sub: '跨会议汇总某人的承诺与待办' },
   { icon: 'mic', title: '谁提到了活动弹窗的问题？', sub: '定位具体发言人与原声时间点' },
   { icon: 'alert', title: '这三场会有什么风险？', sub: '跨会议汇总未决事项与风险' },
 ];
@@ -292,12 +292,25 @@ export function setScope(meetingId) {
   const meeting = store.meetings.find((item) => item.id === meetingId);
   const title = $('#chatTitle');
   const sub = $('#chatSubtitle');
+  const chip = $('#scopeChip');
+  const chipText = $('#scopeChipText');
+  const chipClear = $('#scopeChipClear');
   if (!meeting) {
     title.textContent = '全局对话';
     sub.textContent = '可查询任意会议，或上传录音生成纪要';
   } else {
     title.textContent = '正在就《' + meeting.title + '》对话';
-    sub.textContent = meeting.date + ' · 提问范围已限定在本场会议';
+    sub.textContent = meeting.date + ' · 提问范围已限定在本场会议，可点右侧范围标签切回全部会议';
+  }
+  // 范围标签：显示当前提问范围；限定到单场时可一键切回全库（对话不丢）
+  if (chip && chipText && chipClear) {
+    chipText.textContent = meeting ? meeting.title : '全部会议';
+    chipClear.hidden = !meeting;
+    chip.dataset.meetingId = meeting ? meeting.id : '';
+    chip.setAttribute(
+      'aria-label',
+      meeting ? '当前只查《' + meeting.title + '》，点击切回全部会议' : '当前查全部会议'
+    );
   }
 }
 

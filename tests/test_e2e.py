@@ -85,7 +85,7 @@ def test_human_review_flow_updates_exports(client) -> None:
         assert item["owner"] == "p_wang"
 
     markdown = client.get("/api/export/m_20260904", params={"format": "md"}).text
-    assert "王强" in markdown
+    assert "C" in markdown
 
 
 def test_upload_review_resume_flow(client) -> None:

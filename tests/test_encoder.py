@@ -31,7 +31,7 @@ def test_hash_embedding_is_deterministic_across_instances() -> None:
 
 
 def test_hash_embedding_is_l2_normalized() -> None:
-    vector = HashingEmbedder().encode(["王强负责埋点口径"])[0]
+    vector = HashingEmbedder().encode(["C 负责埋点口径"])[0]
     norm = sum(value * value for value in vector) ** 0.5
     assert norm == pytest.approx(1.0)
 

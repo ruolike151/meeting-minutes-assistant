@@ -130,7 +130,7 @@ function renderMeetingList() {
 
 const SUGGESTIONS = [
   { icon: 'search', title: '这场周会定了什么？', sub: '查询指定会议的结论与决议' },
-  { icon: 'user',   title: '王强一共答应了哪些事？', sub: '跨会议汇总某人的承诺与待办' },
+  { icon: 'user',   title: 'C 一共答应了哪些事？', sub: '跨会议汇总某人的承诺与待办' },
   { icon: 'mic',    title: '谁提到了活动弹窗的问题？', sub: '定位具体发言人与原声时间点' },
   { icon: 'alert',  title: '这三场会有什么风险？', sub: '跨会议汇总未决事项与风险' }
 ];
@@ -851,7 +851,7 @@ function makeMeetingFromUpload(fileName) {
       { id: 's3', start: 240,  end: 520,  speaker: 'p_wang', confidence: 0.94,
         text: '这个是因为退款走的是定时任务批处理，一天只跑一次。如果改成实时回调，当天就能到账，开发量大概三天。' },
       { id: 's4', start: 520,  end: 700,  speaker: 'p_zhao', confidence: 0.97,
-        text: '三天可以做，那就改。李明你那边配合出一版退款状态的展示文案。' },
+        text: '三天可以做，那就改。B 你那边配合出一版退款状态的展示文案。' },
       { id: 's5', start: 700,  end: 800,  speaker: 'p_li',   confidence: 0.95,
         text: '可以，我明天之前给。' },
       { id: 's6', start: 800,  end: 1080, speaker: 'p_zhao', confidence: 0.96,

@@ -130,3 +130,20 @@ def test_frontend_stays_buildless() -> None:
         not href.startswith(("http://", "https://")) for href in styles
     ), styles
     assert not (WEB / "dist").exists(), "不引入打包产物目录"
+
+
+def test_scope_chip_can_switch_back_to_library() -> None:
+    """提问范围标签：显示当前范围，且能一键切回「全部会议」（对话不丢）。
+
+    用户反馈的原始问题就是"助手只能查一个对话吗"——原因是上传音频或点击会议后
+    界面会把范围锁定到单场，而原来只有「新对话」能重置（会把对话一起清掉）。
+    """
+    html = read("index.html")
+    for node_id in ("scopeChip", "scopeChipText", "scopeChipClear"):
+        assert 'id="%s"' % node_id in html, "缺少范围标签节点：" + node_id
+    chat = read("chat.js")
+    scope_fn = function_body(chat, "setScope")
+    assert "scopeChipText" in scope_fn, "setScope 要同步范围标签文案"
+    assert "dataset.meetingId" in scope_fn, "范围标签要记录当前限定到哪场会议"
+    app = read("app.js")
+    assert "scopeChip" in app and "setScope(null)" in app, "app.js 要绑定范围标签的点击"

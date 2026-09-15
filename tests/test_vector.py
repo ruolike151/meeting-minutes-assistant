@@ -76,7 +76,7 @@ def test_candidates_respect_filters(conn) -> None:
     assert {item.meeting_id for item in by_date} == {"m_20260911"}
 
     by_speaker = repo.candidates(encoder=encoder, speaker_ids=["p_wang"])
-    assert by_speaker, "王强在种子数据里有发言"
+    assert by_speaker, "C 在种子数据里有发言"
     assert all(item.meeting_id for item in by_speaker)
 
 

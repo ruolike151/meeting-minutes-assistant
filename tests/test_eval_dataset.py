@@ -47,7 +47,9 @@ def test_real_meetings_ingest_into_eval_db(conn) -> None:
     meeting = repo.get("m_real_1")
     assert meeting is not None
     assert meeting.title.startswith("官网改版项目短会")
-    assert {p.name for p in meeting.participants} == {"项目经理", "运营专员", "UI设计师", "前端开发"}
+    # 发言人只用字母代号（2026-09-15 定稿），岗位只写在 role 里
+    assert {p.name for p in meeting.participants} == {"A", "B", "C", "D"}
+    assert {p.role for p in meeting.participants} == {"项目负责人", "运营", "设计", "研发"}
     # 合说片段按"未识别"处理，置信度 0.5（领域模型不承载 GROUP）
     group_segments = [
         item for item in SegmentRepo(conn).list_for_meeting("m_real_1") if item.speaker_id is None

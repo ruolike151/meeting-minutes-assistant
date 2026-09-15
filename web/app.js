@@ -111,12 +111,22 @@ function bindEvents() {
   $('#attachRemove').addEventListener('click', clearAttachment);
 
   $('#newChatBtn').addEventListener('click', newChat);
+  // 范围标签：点一下在「全部会议 / 当前会议」之间切换，对话内容保留
+  $('#scopeChip').addEventListener('click', () => {
+    const current = $('#scopeChip').dataset.meetingId;
+    if (current) {
+      setScope(null);
+      toast('提问范围已切回「全部会议」', 'ok');
+    } else {
+      toast('当前已是全部会议；点左侧会议库的会议即可把范围限定到某一场');
+    }
+  });
   $('#themeBtn').addEventListener('click', () =>
     setTheme(store.theme === 'dark' ? 'light' : 'dark'));
   $('#exportBtn').addEventListener('click', toggleExportMenu);
   $('#panelClose').addEventListener('click', closePanel);
   $('#speakerBtn').addEventListener('click', () =>
-    toast('直接问「王强答应了哪些事」，发言人汇总走后端 query_speaker 工具'));
+    toast('直接问「C 答应了哪些事」，发言人汇总走后端 query_speaker 工具'));
 
   $('#meetingSearch').addEventListener('input', renderMeetingList);
   $('#meetingList').addEventListener('click', async (event) => {
