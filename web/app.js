@@ -215,6 +215,9 @@ function bindEvents() {
 }
 
 async function init() {
+  // 构建标记：排查"页面跑的是哪一版"时一眼可见（F12 控制台）
+  const build = document.querySelector('meta[name="ma-build"]');
+  if (build) console.info('会议纪要助手 build', build.getAttribute('content'));
   let saved = null;
   try {
     saved = localStorage.getItem('mna-theme');

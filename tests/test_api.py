@@ -278,16 +278,43 @@ def test_conversation_list_supports_switching(client) -> None:
 
 
 def test_static_assets_revalidate_every_time(client) -> None:
-    """静态资源带 no-cache：改了前端刷新就能生效，不被启发式缓存挡住。
+    """静态资源带 no-store：改了前端刷新就能生效，不被缓存挡住。
 
     踩过的坑：StaticFiles 默认不发缓存头，浏览器直接吃缓存，
+    加上前端是原生 ES 模块、子导入不带查询串，缓存更隐蔽——
     "服务端已经是新文件、页面还是旧行为"，排查了半天。
     """
     page = client.get("/")
     assert page.status_code == 200
-    assert page.headers["cache-control"] == "no-cache"
+    assert page.headers["cache-control"] == "no-store"
     script = client.get("/chat.js")
     assert script.status_code == 200
-    assert script.headers["cache-control"] == "no-cache"
+    assert script.headers["cache-control"] == "no-store"
     # API 响应不受影响（数据本来就该由业务决定缓存策略）
     assert "cache-control" not in client.get("/api/meetings").headers
+
+
+def test_index_serves_versioned_assets(client, settings) -> None:
+    """首页给本地 js / css 带上版本号：文件一变，浏览器就是请求新地址。
+
+    这是"改了前端页面还是旧的"的根治手段——缓存头只能劝浏览器回源，
+    URL 变了才是绕不开的强制刷新。
+    """
+    from app.main import _asset_version
+
+    page = client.get("/")
+    assert page.status_code == 200
+    html = page.text
+    # index.html 只直接引用这两个；其余是 ES 模块的子导入（靠 no-store 保证新鲜）
+    for name in ("app.js", "styles.css"):
+        version = _asset_version(settings.web_dir / name)
+        assert "%s?v=%s" % (name, version) in html, "缺少版本号：" + name
+    assert '<meta name="ma-build"' in html
+    # 版本号确实随文件变化：拿一个真实存在的文件改 mtime 再取一次
+    target = settings.web_dir / "styles.css"
+    before = _asset_version(target)
+    import os
+    stat = target.stat()
+    os.utime(target, (stat.st_atime, stat.st_mtime + 1))
+    assert _asset_version(target) != before
+    os.utime(target, (stat.st_atime, stat.st_mtime))
